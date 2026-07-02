@@ -8,6 +8,9 @@
 // Both report builders (report-html.js and the onboarding report) import from
 // here so a rebrand is a one-file edit. Zero dependencies.
 
+const fs = require('fs');
+const path = require('path');
+
 // ---------------------------------------------------------------------------
 // Colour palette
 // ---------------------------------------------------------------------------
@@ -357,4 +360,22 @@ footer .watermark {
 `;
 }
 
-module.exports = { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, SEVERITY_COLORS, STATUS, baseCss };
+// ---------------------------------------------------------------------------
+// Logo
+// ---------------------------------------------------------------------------
+
+// Embeds logo.png (repo root) as a base64 data URI so the report stays a
+// single self-contained file. Mirrors samaudittoollocal/brand.py's
+// logo_data_uri(). Returns '' if the file is missing, so report-html.js /
+// onboarding-report.js fall back to the text wordmark (Logo.png is optional —
+// forks/clones without one still render correctly).
+function logoDataUri() {
+  const logoPath = path.join(__dirname, '..', '..', 'logo.png');
+  try {
+    return `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`;
+  } catch {
+    return '';
+  }
+}
+
+module.exports = { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, SEVERITY_COLORS, STATUS, baseCss, logoDataUri };

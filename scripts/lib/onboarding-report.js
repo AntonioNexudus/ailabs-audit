@@ -1,6 +1,6 @@
 const { escHtml } = require('./util');
 const { TODAY_STR } = require('./config');
-const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, STATUS, baseCss } = require('./brand');
+const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, STATUS, baseCss, logoDataUri } = require('./brand');
 
 // ---------------------------------------------------------------------------
 // Branded HTML report for the onboarding check-in audit — the samaudit
@@ -153,6 +153,11 @@ function buildOnboardingReport(sections, scopeMeta) {
   const footerScope = scopeMeta && scopeMeta.businesses && scopeMeta.businesses.length > 0
     ? scopeMeta.businesses.map(formatBusiness).join(', ')
     : 'all businesses';
+  // Real logo if logo.png exists at the repo root, else the text wordmark.
+  const logoSrc = logoDataUri();
+  const headerLogo = logoSrc
+    ? `<img src="${logoSrc}" alt="Nexudus">`
+    : '<div class="wordmark">nexudus</div>';
 
   const allChecks = sections.flatMap(s => s.checks);
   const totals = sectionScore(allChecks);
@@ -206,7 +211,7 @@ ${reportCss()}
 <div class="page">
 
   <header>
-    <div class="wordmark">nexudus</div>
+    ${headerLogo}
     <div class="header-text">
       <div class="label">Onboarding Check-in Audit</div>
       <h1>${bizScope}</h1>

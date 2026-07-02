@@ -48,4 +48,15 @@ function fetchPerBusiness(businesses, argsFor, onError) {
   return out;
 }
 
-module.exports = { names, table, fields, fetchPerBusiness, safeId };
+// Builds the "N booking-policy rule(s) could not be verified" note shared by
+// resourcesNoBookingPolicy.js (#29) and resourcesBookingPolicyIncomplete.js
+// (#30) — both consume data.js's getResourceAccessRuleMap(), whose
+// fetchFailedRuleIds set surfaces the same caveat in both checks. Returns ''
+// when nothing failed, so callers can splice it in unconditionally.
+function fetchFailedCaveat(fetchFailedRuleIds, suffix) {
+  if (!fetchFailedRuleIds || fetchFailedRuleIds.size === 0) return '';
+  const n = fetchFailedRuleIds.size;
+  return `Note: ${n} booking-policy rule${n !== 1 ? 's' : ''} could not be verified (fetch failed)${suffix ? `, ${suffix}` : ''}.`;
+}
+
+module.exports = { names, table, fields, fetchPerBusiness, fetchFailedCaveat, safeId };

@@ -14,7 +14,7 @@ description: 34-check health audit of Nexudus locations with selectable depth ti
 ├── .gitignore             excludes runtime output (.audit-cache/)
 └── scripts/
     ├── audit.js            account-health audit entry point (34 checks)
-    ├── onboarding-audit.js onboarding check-in audit entry point (22 checks)
+    ├── onboarding-audit.js onboarding check-in audit entry point (30 checks)
     └── lib/
         ├── brand.js              official Nexudus brand: palette, fonts, shared report CSS
         ├── log.js                console output router (interactive progress line vs plain logging)
@@ -29,7 +29,7 @@ description: 34-check health audit of Nexudus locations with selectable depth ti
         ├── checks/               34 health-audit check implementations
         ├── onboarding-check-defs.js   onboarding-audit check registry
         ├── onboarding-report.js       onboarding-audit HTML report (built on brand.js)
-        └── onboarding-checks/         25 onboarding-audit check implementations
+        └── onboarding-checks/         30 onboarding-audit check implementations + _helpers.js
 ```
 
 To use the skill, drop the folder into a Claude Code `skills/nexudus-audit/`
@@ -54,7 +54,8 @@ Branding is the **official Nexudus brand** and lives in one place: `scripts/lib/
 - `C` — the full palette: hero orange `#FE4D00` (pale `#FFF2EC`, light `#FFDACC`, medium `#FF6E2F`, dark `#723031`), navy `#212C6A`, blue `#5757F4` (pale `#F1F4FF`, light `#C5CCFF`), green `#28B95F` (pale `#E0FFF0`, light `#9AE9B8`, dark `#00703E`), pink `#FF4F95` (pale `#FFF0F5`, light `#FFCCDF`, dark `#6D1A3B`), and neutrals (white `#FDFDFD`, bg `#F8F8F8`, borders, greys).
 - `FONT_DISPLAY` (Parkinsans, headings/labels) and `FONT_BODY` (Poppins, body/table text), loaded via `GOOGLE_FONTS_URL` with system-font fallbacks so the report still renders offline.
 - `SEVERITY_COLORS` maps the health audit's HIGH/MEDIUM/LOW/INSIGHT severities onto the brand palette (HIGH→pink, MEDIUM→hero orange, LOW→blue, INSIGHT→grey), each with `{ badge, bg, border, text }`. `STATUS` does the same for the onboarding audit's pass/warn/fail/skip results (pass→green, warn→orange, fail→pink, skip→grey).
-- `baseCss()` returns the shared template shell both reports build on: the 960px page card, navy header with a **text wordmark** ("nexudus" — no logo image file exists yet; swap the `.wordmark` div for an `<img>`/data-URI once one is available), 4px orange accent bar, blue-pale score bar, collapsible `<details class="section">` groups with count pills and a rotating chevron, badges, pills, and the "Powered by Nexudus" footer.
+- `baseCss()` returns the shared template shell both reports build on: the 960px page card, navy header with the logo, 4px orange accent bar, blue-pale score bar, collapsible `<details class="section">` groups with count pills and a rotating chevron, badges, pills, and the "Powered by Nexudus" footer.
+- **Logo:** `brand.js`'s `logoDataUri()` reads `logo.png` from the repo root and embeds it as a base64 data URI, so both reports stay a single self-contained file with no external image reference. If `logo.png` is missing (e.g. a fresh clone that hasn't added one yet), both reports gracefully fall back to a text wordmark ("nexudus", Parkinsans, white on navy) instead — no code changes needed either way, just drop or remove `logo.png` at the repo root.
 
 The remediation copy that appears in each health-audit finding's "Recommended action" card lives in the `REMEDIATIONS` lookup map in `scripts/lib/check-defs.js`. Each entry is `{ steps, helpUrl }` keyed by the check's `key` field. To revise a step, edit that entry — no other code changes needed.
 
@@ -249,7 +250,7 @@ Only checks that actually ran appear in either report — no misleading "0 issue
 A second, smaller audit for **routine check-ins with newly onboarded clients during their first year** — not account-health issues, but setup-correctness/readiness gaps (in the spirit of samaudittoollocal's AI Agent readiness checks): are plans properly configured with benefits, are rates set on resources and correctly assigned, is the location profile complete, and so on.
 
 Differences from the health audit:
-- **No depth tiers.** All 22 checks always run — the audit is small and cheap enough that Quick/Medium/Thorough scoping isn't needed.
+- **No depth tiers.** All 30 checks always run — the audit is small and cheap enough that Quick/Medium/Thorough scoping isn't needed.
 - **pass / warn / fail / skip** semantics instead of severity + issue count, matching `STATUS` in `brand.js`.
 - **HTML only** — no `.md`, since there's no AI-driven fix flow for this audit; the HTML is the entire deliverable, opened directly by the operator.
 - Same Business-ID prompt, validation, lock/auth handling, and Desktop output location as `audit.js`; run it the same two ways:
@@ -259,17 +260,19 @@ Differences from the health audit:
   node scripts/onboarding-audit.js --show-checks                      # list checks and exit
   ```
 
-**22 checks across 5 sections:**
+**30 checks across 7 sections:**
 
 | Section | Checks |
 |---|---|
 | **Plans & pricing** (#1–5) | Plans published & visible · Pricing & descriptions complete · Tax rate/financial account assigned · Booking/printing credit benefits attached · Plan naming matches plan type |
-| **Resources & rates** (#6–10) | Bookable resources have a rate · Descriptions & capacity set · Amenity flags set · Booking limits configured · Access hours match opening hours |
+| **Resources & rates** (#6–10, #29–30) | Bookable resources have a rate · Descriptions & capacity set · Amenity flags set · Booking limits configured · Access hours match opening hours · No booking-policy rule at all · Booking-policy rules missing key limits |
 | **Location & portal basics** (#11–16) | Location profile complete · Opening hours configured · Coordinates set · Payment gateway connected · Tax rates configured · Terms & conditions/house rules set |
 | **Member experience readiness** (#17) | Help-desk departments have managers |
 | **First-year hygiene** (#18–22) | Active contracts billed on schedule · Space usage activity present · No long-standing £0 contracts past go-live · No stale onboarding drafts · Operators active in last 30 days |
+| **Financial & compliance hygiene** (#23–25) | Event attendees checked-in but not billed · Contract signatories missing AML/KYC verification · Time-pass catalog readiness |
+| **Integrations & system config** (#26–28) | Inactive or broken webhooks · Inactive validation rules · Required custom fields not shown on any form |
 
-One check (#10, resource access-hours-vs-opening-hours) returns `skip` with a hint rather than a false pass/fail — the Nexudus CLI doesn't expose a field linking a resource's access hours to its business's opening hours, so it's flagged for manual verification instead of guessed at.
+One check (#10, resource access-hours-vs-opening-hours) returns `skip` with a hint rather than a false pass/fail — the Nexudus CLI doesn't expose a field linking a resource's access hours to its business's opening hours, so it's flagged for manual verification instead of guessed at. Checks #23–30 (added after the initial 22) follow the same "verify every CLI flag via `--help` before writing a check" discipline; #24 (AML/KYC) deliberately flags only a fully-missing AML check status rather than interpreting a sanctions-score threshold or a specific identity-check provider's fields, since neither is documented well enough by the CLI to interpret safely — see the code comment in `scripts/lib/onboarding-checks/contractContactsAmlMissing.js` for the full reasoning.
 
 Three checks originally planned for "Members portal branding," "Welcome/onboarding email template customization," and "Check-in method configured" were **removed** rather than shipped as permanent skips — the CLI exposes no readable signal for any of the three (write-only upload fields, non-diffable template metadata, and a setting that spans business settings/access-control/devices with no single field), so there was no way to ever turn them into a real pass/warn/fail. They remain good candidates for a future check if the CLI adds the right field.
 

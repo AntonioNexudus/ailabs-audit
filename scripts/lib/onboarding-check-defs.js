@@ -31,12 +31,27 @@ const checkHeavyDiscountContracts = require('./onboarding-checks/heavyDiscountCo
 const checkStaleOnboardingDrafts = require('./onboarding-checks/staleOnboardingDrafts');
 const checkOperatorsActive = require('./onboarding-checks/operatorsActive');
 
+// Checks #23-30 (added after the original 22 — see onboarding-check-defs.js
+// header comment and README's "Onboarding Check-in Audit" section for the
+// grouping-by-Map guarantee that lets these append at the end of the array
+// while still rendering under their thematic section).
+const checkEventAttendeesUnbilled = require('./onboarding-checks/eventAttendeesUnbilled');
+const checkContractContactsAmlMissing = require('./onboarding-checks/contractContactsAmlMissing');
+const checkTimepassesReadiness = require('./onboarding-checks/timepassesReadiness');
+const checkWebhooksInactive = require('./onboarding-checks/webhooksInactive');
+const checkValidationRulesInactive = require('./onboarding-checks/validationRulesInactive');
+const checkCustomFieldsUnusedRequired = require('./onboarding-checks/customFieldsUnusedRequired');
+const checkResourcesNoBookingPolicy = require('./onboarding-checks/resourcesNoBookingPolicy');
+const checkResourcesBookingPolicyIncomplete = require('./onboarding-checks/resourcesBookingPolicyIncomplete');
+
 const SECTIONS = {
   PLANS: 'Plans & pricing',
   RESOURCES: 'Resources & rates',
   LOCATION: 'Location & portal basics',
   MEMBER_EXPERIENCE: 'Member experience readiness',
   HYGIENE: 'First-year hygiene',
+  FINANCIAL_COMPLIANCE: 'Financial & compliance hygiene',
+  INTEGRATIONS: 'Integrations & system config',
 };
 
 const ONBOARDING_CHECK_DEFS = [
@@ -66,6 +81,17 @@ const ONBOARDING_CHECK_DEFS = [
   { num: 20, key: 'heavyDiscountContracts', name: 'No long-standing £0 contracts past go-live', section: SECTIONS.HYGIENE, fn: checkHeavyDiscountContracts },
   { num: 21, key: 'staleOnboardingDrafts', name: 'No stale draft invoices left over from onboarding', section: SECTIONS.HYGIENE, fn: checkStaleOnboardingDrafts },
   { num: 22, key: 'operatorsActive', name: 'Operators active in the last 30 days', section: SECTIONS.HYGIENE, fn: checkOperatorsActive },
+
+  { num: 23, key: 'eventAttendeesUnbilled', name: 'Event attendees checked-in but not billed', section: SECTIONS.FINANCIAL_COMPLIANCE, fn: checkEventAttendeesUnbilled },
+  { num: 24, key: 'contractContactsAmlMissing', name: 'Contract signatories missing AML/KYC verification', section: SECTIONS.FINANCIAL_COMPLIANCE, fn: checkContractContactsAmlMissing },
+  { num: 25, key: 'timepassesReadiness', name: 'Time-pass catalog readiness', section: SECTIONS.FINANCIAL_COMPLIANCE, fn: checkTimepassesReadiness },
+
+  { num: 26, key: 'webhooksInactive', name: 'Inactive or broken webhooks', section: SECTIONS.INTEGRATIONS, fn: checkWebhooksInactive },
+  { num: 27, key: 'validationRulesInactive', name: 'Inactive validation rules', section: SECTIONS.INTEGRATIONS, fn: checkValidationRulesInactive },
+  { num: 28, key: 'customFieldsUnusedRequired', name: 'Required custom fields not shown on any form', section: SECTIONS.INTEGRATIONS, fn: checkCustomFieldsUnusedRequired },
+
+  { num: 29, key: 'resourcesNoBookingPolicy', name: 'Bookable resources with no booking-policy rule', section: SECTIONS.RESOURCES, fn: checkResourcesNoBookingPolicy },
+  { num: 30, key: 'resourcesBookingPolicyIncomplete', name: 'Booking-policy rules missing key limits', section: SECTIONS.RESOURCES, fn: checkResourcesBookingPolicyIncomplete },
 ];
 
 module.exports = { ONBOARDING_CHECK_DEFS, SECTIONS };

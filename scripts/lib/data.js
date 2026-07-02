@@ -3,8 +3,9 @@
 // the audit reads entities only through these accessors.
 
 const {
-  fetchAllPages, fetchAllPagesCached, fetchAllPagesCachedAsync,
+  runCLI, fetchAllPages, fetchAllPagesCached, fetchAllPagesCachedAsync,
 } = require('./nexudus-cli');
+const { safeId } = require('./util');
 const state = require('./state');
 const log = require('./log');
 
@@ -196,6 +197,111 @@ function getPaymentGateways() {
 }
 
 // ---------------------------------------------------------------------------
+// Additional getters — added for onboarding checks #23-30 (financial/
+// compliance hygiene, integrations & system config, resource booking-policy
+// completeness). Same shared-cache/business-scoping pattern as above: none of
+// these entities are registered in nexudus-cli's BUSINESS_FLAG map (confirmed
+// via `nexudus <entity> list --help` at implementation time — several *do*
+// expose a --business-id filter, but per the precedent set by getResources/
+// getExtraServices/getTaxRates/getPaymentGateways above, new getters fetch
+// account-wide and scope with filterByBusiness() in memory rather than
+// modifying the shared BUSINESS_FLAG map).
+// ---------------------------------------------------------------------------
+
+function getEventAttendees() {
+  if (!cache.eventAttendees) cache.eventAttendees = filterByBusiness(fetchAllPagesCached('eventAttendees', ['eventattendees', 'list']));
+  return cache.eventAttendees;
+}
+
+function getTimepasses() {
+  if (!cache.timepasses) cache.timepasses = filterByBusiness(fetchAllPagesCached('timepasses', ['timepasses', 'list']));
+  return cache.timepasses;
+}
+
+function getWebhooks() {
+  if (!cache.webhooks) cache.webhooks = filterByBusiness(fetchAllPagesCached('webhooks', ['webhooks', 'list']));
+  return cache.webhooks;
+}
+
+function getValidationRules() {
+  if (!cache.validationRules) cache.validationRules = filterByBusiness(fetchAllPagesCached('validationRules', ['validationrules', 'list']));
+  return cache.validationRules;
+}
+
+function getCustomFields() {
+  if (!cache.customFields) cache.customFields = filterByBusiness(fetchAllPagesCached('customFields', ['customfields', 'list']));
+  return cache.customFields;
+}
+
+// contractcontacts — AML/KYC fields consumed by contractContactsAmlMissing.js
+// (#24). Unlike the other new getters in this block, this entity has no
+// --business-id filter at all (confirmed absent from `list --help`), so it
+// cannot be scoped via filterByBusiness()'s BusinessId/InvoicingBusinessId/etc
+// field checks either (contract contacts carry none of those). It is fetched
+// account-wide here and left unscoped; the consuming check scopes it itself
+// by joining CoworkerContractId against the already business-scoped
+// getContracts() result, the same join pattern getContracts() itself uses for
+// its own CoworkerId scoping.
+function getContractContacts() {
+  if (!cache.contractContacts) cache.contractContacts = fetchAllPagesCached('contractContacts', ['contractcontacts', 'list']);
+  return cache.contractContacts;
+}
+
+// coworkeridentitychecks — used only as a secondary, presence/absence-only
+// informational signal by contractContactsAmlMissing.js (#24). See that
+// file's header comment for why its fields (provider/verification-type) are
+// deliberately NOT interpreted for pass/fail purposes.
+function getCoworkerIdentityChecks() {
+  if (!cache.coworkerIdentityChecks) cache.coworkerIdentityChecks = filterByBusiness(fetchAllPagesCached('coworkerIdentityChecks', ['coworkeridentitychecks', 'list']));
+  return cache.coworkerIdentityChecks;
+}
+
+// resourceaccessrules list rows (no linked-resource info — see
+// getResourceAccessRuleMap() below for that). --business-id is a confirmed
+// filter for this entity but, per the comment above, scoped in memory instead.
+function getResourceAccessRules() {
+  if (!cache.resourceAccessRules) cache.resourceAccessRules = filterByBusiness(fetchAllPagesCached('resourceAccessRules', ['resourceaccessrules', 'list']));
+  return cache.resourceAccessRules;
+}
+
+// Derived, cached map from resource ID -> set of resourceaccessrule IDs that
+// apply to it. `resourceaccessrules list` does not return the linked
+// Resources array (confirmed via `list --help`: only --applied-resources-count
+// is a list filter, not the resources themselves) — only `resourceaccessrules
+// get <id>` returns the full `Resources` relation, mirroring the same
+// list->get-per-record pattern helpDeskManagers.js uses for department
+// managers. Computed once and cached (module-level `cache`) so both #29
+// (resourcesNoBookingPolicy) and #30 (resourcesBookingPolicyIncomplete) share
+// a single pass of `get` calls instead of doubling the CLI traffic.
+function getResourceAccessRuleMap() {
+  if (!cache.resourceAccessRuleMap) {
+    const rules = getResourceAccessRules();
+    const resourceIdToRuleIds = new Map();
+    const fetchFailedRuleIds = new Set();
+    for (const rule of rules) {
+      if (!rule || rule.Id == null) continue;
+      let linked = [];
+      try {
+        const result = runCLI(['resourceaccessrules', 'get', safeId(rule.Id)]);
+        linked = Array.isArray(result?.data?.Resources) ? result.data.Resources : [];
+      } catch (err) {
+        fetchFailedRuleIds.add(rule.Id);
+        log.warn(`  [warn] could not fetch linked resources for booking-policy rule ${rule.Id} (${rule.Name || 'unnamed'}): ${err.message}`);
+        continue;
+      }
+      for (const r of linked) {
+        const rid = r && r.Id != null ? String(r.Id) : (r != null ? String(r) : null);
+        if (rid == null) continue;
+        if (!resourceIdToRuleIds.has(rid)) resourceIdToRuleIds.set(rid, new Set());
+        resourceIdToRuleIds.get(rid).add(rule.Id);
+      }
+    }
+    cache.resourceAccessRuleMap = { resourceIdToRuleIds, fetchFailedRuleIds };
+  }
+  return cache.resourceAccessRuleMap;
+}
+
+// ---------------------------------------------------------------------------
 // Parallel prefetch. Builds the list of entities the selected checks actually
 // need, fetches them in one upfront pass, and populates the in-memory cache so
 // each getX() returns immediately. The lazy getX path is still available
@@ -320,4 +426,8 @@ module.exports = {
   getContractsByCoworker, classifyCoworkerById, computeCoworkerStats,
   // Onboarding check-in audit getters (scripts/onboarding-audit.js)
   getResources, getExtraServices, getTaxRates, getPaymentGateways,
+  // Onboarding checks #23-30 getters
+  getEventAttendees, getTimepasses, getWebhooks, getValidationRules,
+  getCustomFields, getContractContacts, getCoworkerIdentityChecks,
+  getResourceAccessRules, getResourceAccessRuleMap,
 };

@@ -1,7 +1,7 @@
 const { TODAY, TODAY_STR } = require('./config');
 const { escHtml, classifyError, ERROR_HINTS } = require('./util');
 const { CHECK_DEFS, REMEDIATIONS } = require('./check-defs');
-const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, SEVERITY_COLORS, baseCss } = require('./brand');
+const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, SEVERITY_COLORS, baseCss, logoDataUri } = require('./brand');
 
 // ---------------------------------------------------------------------------
 // Branded HTML report — Nexudus-branded operator deliverable.
@@ -252,6 +252,11 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
     minute: '2-digit',
     timeZoneName: 'short',
   });
+  // Real logo if logo.png exists at the repo root, else the text wordmark.
+  const logoSrc = logoDataUri();
+  const headerLogo = logoSrc
+    ? `<img src="${logoSrc}" alt="Nexudus">`
+    : '<div class="wordmark">nexudus</div>';
 
   // Report-specific CSS layered on top of the shared brand shell.
   const reportCss = `
@@ -471,7 +476,7 @@ ${reportCss}
 <div class="page">
 
   <header>
-    <div class="wordmark">nexudus</div>
+    ${headerLogo}
     <div class="header-text">
       <div class="label">Account Health Audit</div>
       <h1>${bizScope}</h1>
