@@ -69,7 +69,9 @@ Tiers are sized by **which entities each check needs to fetch**, not just severi
 | Thorough | ✓ | ✓ | ✓ |
 
 **Quick (7):** #7, #13, #15, #16, #20, #30, #31
+
 **Medium (24):** Quick + #1, #3, #4, #5, #8, #9, #10, #11, #18, #19, #21, #25, #26, #28, #32, #33, #34
+
 **Thorough (34):** all
 
 Tier membership lives in `CHECK_TIERS` (top of audit.js). Runtime is dominated by the Coworker / contract / invoice pulls and is highly tenant-size dependent: **Quick stays fast** (no heavy fetches), but on a large (~5k-coworker) tenant **PII tokenization** makes each `coworkers list` page ~66s and forces serial fetching (`MAX_CONCURRENT_CLI_REDACTED = 1`), so Medium/Thorough can run on the order of tens of minutes. Server-side business scoping (`--business-ids`) is the main lever to cut that — it fetches only the selected location's rows instead of the whole account. Clear runs (pii-mode unlocked) skip tokenization and fetch with up to `MAX_CONCURRENT_CLI_CLEAR = 4` parallel CLI calls.
@@ -77,8 +79,11 @@ Tier membership lives in `CHECK_TIERS` (top of audit.js). Runtime is dominated b
 ## Check Structure (34 total)
 
 **HIGH (12):** Desks on cancelled contracts, overdue invoices, inactive Members with active contracts, billing behind, stuck cancellations, 12-month writeoffs, out-of-stock, suspended Members with active contracts, suspended contracts past cancellation, deposits on cancelled contracts, team merged-billing payer with no payment method, future bookings on archived resources
+
 **MEDIUM (16):** Expired discount codes, stale drafts, missing tax/financial account, frozen contracts past end date, uninvoiced bookings, no payment method, contract limit approaching, low stock, archived plans with active contracts, unclosed checkins, uninvoiced charges, overpaid invoices, stale operators, help-desk departments with no managers, unassigned help-desk tickets, misconfigured plan/product booking credits
+
 **LOW (3):** Partial payments, impossible discount date range, resources with no booking rate
+
 **INSIGHT (3):** Duplicate Coworker emails, contract price differs from plan price, duplicate contracts (same Member + plan)
 
 ## Multi-Business Filtering
