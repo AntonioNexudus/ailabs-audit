@@ -6,6 +6,7 @@ const {
   fetchAllPages, fetchAllPagesCached, fetchAllPagesCachedAsync,
 } = require('./nexudus-cli');
 const state = require('./state');
+const log = require('./log');
 
 function inSelectedBusiness(item) {
   if (!state.selectedBusinessIds) return true;
@@ -165,6 +166,36 @@ function getProductCredits() {
 }
 
 // ---------------------------------------------------------------------------
+// Additional getters — added for the onboarding check-in audit
+// (scripts/onboarding-audit.js). Same shared-cache/business-scoping pattern
+// as the getters above; none of the existing getters were changed.
+// ---------------------------------------------------------------------------
+
+function getResources() {
+  if (!cache.resources) cache.resources = filterByBusiness(fetchAllPagesCached('resources', ['resources', 'list']));
+  return cache.resources;
+}
+
+function getExtraServices() {
+  // Booking rates. No server-side --business-id fast path registered in
+  // nexudus-cli's scopedPlan, so this fetches account-wide and scopes in
+  // memory via filterByBusiness (same fallback every other unregistered
+  // entity already takes).
+  if (!cache.extraServices) cache.extraServices = filterByBusiness(fetchAllPagesCached('extraServices', ['extraservices', 'list']));
+  return cache.extraServices;
+}
+
+function getTaxRates() {
+  if (!cache.taxRates) cache.taxRates = filterByBusiness(fetchAllPagesCached('taxRates', ['taxrates', 'list']));
+  return cache.taxRates;
+}
+
+function getPaymentGateways() {
+  if (!cache.paymentGateways) cache.paymentGateways = filterByBusiness(fetchAllPagesCached('paymentGateways', ['paymentgateways', 'list']));
+  return cache.paymentGateways;
+}
+
+// ---------------------------------------------------------------------------
 // Parallel prefetch. Builds the list of entities the selected checks actually
 // need, fetches them in one upfront pass, and populates the in-memory cache so
 // each getX() returns immediately. The lazy getX path is still available
@@ -188,34 +219,46 @@ const ENTITY_SPECS = {
   productCredits: { args: ['productbookingcredits', 'list'], filtered: false },
 };
 
-async function prefetchAll(neededKeys) {
+// onEntity(done, total, key) is an optional progress callback fired as each
+// entity settles (fulfilled or rejected), letting audit.js drive a live
+// "Fetching data… 3/7 entities" status line.
+async function prefetchAll(neededKeys, onEntity) {
   if (neededKeys.length === 0) return;
   const start = Date.now();
+  const total = neededKeys.length;
+  let done = 0;
   // allSettled, not all: abandoning in-flight CLI children on the first
   // failure leaves them loading the API in the background, which was observed
   // to crash the next call. Each entity is all-or-nothing (a complete list or
   // a throw), so caching just the ones that resolved is safe; failed entities
   // stay uncached and are re-fetched lazily by their getX().
   const settled = await Promise.allSettled(neededKeys.map(async key => {
-    const spec = ENTITY_SPECS[key];
-    if (!spec) throw new Error(`Unknown entity for prefetch: ${key}`);
-    const data = await fetchAllPagesCachedAsync(key, spec.args);
-    if (spec.join) {
-      // Stash raw; getContracts() finalizes the join once coworker scope exists.
-      cache._rawContracts = data;
-    } else {
-      cache[key] = spec.filtered ? filterByBusiness(data) : data;
+    try {
+      const spec = ENTITY_SPECS[key];
+      if (!spec) throw new Error(`Unknown entity for prefetch: ${key}`);
+      const data = await fetchAllPagesCachedAsync(key, spec.args);
+      if (spec.join) {
+        // Stash raw; getContracts() finalizes the join once coworker scope exists.
+        cache._rawContracts = data;
+      } else {
+        cache[key] = spec.filtered ? filterByBusiness(data) : data;
+      }
+      return key;
+    } finally {
+      done++;
+      if (typeof onEntity === 'function') {
+        try { onEntity(done, total, key); } catch { /* progress must never break the fetch */ }
+      }
     }
-    return key;
   }));
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   const failures = settled.filter(s => s.status === 'rejected');
   const okCount = settled.length - failures.length;
   if (failures.length === 0) {
-    console.log(`Prefetched ${okCount} ${okCount === 1 ? 'entity' : 'entities'} in ${elapsed}s`);
+    log.info(`Prefetched ${okCount} ${okCount === 1 ? 'entity' : 'entities'} in ${elapsed}s`);
   } else {
     const reasons = [...new Set(failures.map(f => (f.reason && f.reason.message) || String(f.reason)))];
-    console.log(`Prefetched ${okCount}/${neededKeys.length} entities in ${elapsed}s — ${failures.length} will be fetched lazily (${reasons.join('; ')})`);
+    log.info(`Prefetched ${okCount}/${neededKeys.length} entities in ${elapsed}s — ${failures.length} will be fetched lazily (${reasons.join('; ')})`);
   }
 }
 
@@ -275,4 +318,6 @@ module.exports = {
   getTeamsList, getTariffCredits, getProductCredits,
   ENTITY_SPECS, prefetchAll,
   getContractsByCoworker, classifyCoworkerById, computeCoworkerStats,
+  // Onboarding check-in audit getters (scripts/onboarding-audit.js)
+  getResources, getExtraServices, getTaxRates, getPaymentGateways,
 };

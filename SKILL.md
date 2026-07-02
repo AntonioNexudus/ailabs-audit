@@ -62,7 +62,7 @@ The script must work both standalone (operator runs `node audit.js` directly) an
      --checks 2,4,9,20
    ```
 
-5. **Two files, two audiences.** The run prints an issue count and two file paths (`.md`, `.html`).
+5. **Two files, two audiences.** Since your stdout is piped (not a TTY), the script logs plainly — sequential lines, no ANSI escapes or in-place progress redraw — and the final lines always contain the issue count and both file paths (`.md`, `.html`), so they're reliably parseable from the captured output.
 
    - **`.md`** — the AI's working input. It contains the **CLI's redaction tokens** (`«PII:…»`), not real customer data, so you may read it directly: present findings grouped by severity (HIGH first) and run fix commands one at a time with confirmation. *Exception:* if the run printed a `pii-mode is UNLOCKED` warning, the `.md` contains REAL PII for that run — treat it as sensitive and confirm with the operator before reading.
    - **`.html`** — the operator's deliverable, containing **REAL customer data** (names, emails — de-tokenized from the CLI's local token store for the operator's eyes only). **Never read this file.** The AI has no reason to: the same findings (tokenized) are in the `.md`, and the `.html` exists only for the operator to open in a browser / Ctrl+P → Save as PDF. Reading it would pull real customer PII into the AI context for no functional benefit. If the operator asks you to "look at the report", read the `.md`, not the `.html`.
@@ -175,10 +175,16 @@ Two files (same timestamp), with different audiences:
 
 Multi-business runs include `BusinessName` on every relevant row. Only checks that actually ran appear in the report — no misleading "0 issues" rows for skipped checks. The HTML report's scope card and footer also display `BusinessID (BusinessName)` for each location, pulled live from `nexudus businesses list` at audit time.
 
+Both files are written to `<Desktop>\Nexudus Audit Reports\` (created automatically, including OneDrive-redirected Desktops), unless `--output <path>` overrides the location.
+
 ## Resilience
 
 - Retries transient CLI failures (timeouts, ECONNRESET, 5xx) up to 3 times with 1s/2s/4s exponential backoff.
 - Each pagination loop has a `MAX_PAGES=1000` (500k records) safety guard against runaway loops.
-- Per-CLI-call timeout (60s) is unchanged.
+- Per-CLI-call timeout is 180s (raised from an original 60s because PII tokenization makes large list pages take up to ~66s each).
 - Failed checks appear in the report with `ERROR` status; the audit continues.
 - If auth expires: `nexudus login` then re-run.
+
+## Related: Onboarding Check-in Audit
+
+`scripts/onboarding-audit.js` is a separate, simpler companion audit for checking that a newly onboarded client's account is set up correctly (plans have benefits attached, resources have rates, location profile is complete, etc.) — pass/warn/fail/skip per check, no depth tiers, HTML-only output (no `.md`, no privacy gate — there's no PII in this report). See `README.md` → "Onboarding Check-in Audit" for the full check list and usage. Trigger phrases like "run an onboarding check" or "check-in audit for business &lt;id&gt;" should invoke this script instead, following the same Business-ID-prompt pattern as steps 1–2 above but skipping the depth-tier step (there isn't one).

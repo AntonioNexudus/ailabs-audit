@@ -2,6 +2,7 @@ const { TODAY, UNASSIGNED_TICKET_DAYS } = require('../config');
 const { daysBetween, safeId } = require('../util');
 const { fetchAllPages } = require('../nexudus-cli');
 const { getBusinesses } = require('../data');
+const log = require('../log');
 
 // #27. Open help-desk tickets unassigned for 7+ days — customer issues lingering
 // without an owner. List per-business for tighter pagination on large tenants.
@@ -22,7 +23,7 @@ function checkUnassignedHelpDeskTickets() {
         '--to-created-on', cutoffIso,
       ]);
     } catch (err) {
-      console.warn(`  [warn] skipping help-desk tickets for business ${biz.Id} (${biz.Name}): ${err.message}`);
+      log.warn(`  [warn] skipping help-desk tickets for business ${biz.Id} (${biz.Name}): ${err.message}`);
       continue;
     }
 

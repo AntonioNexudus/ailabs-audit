@@ -1,6 +1,6 @@
 ---
 name: Nexudus Audit Skill
-description: 34-check health audit of Nexudus locations with selectable depth tiers (Quick/Medium/Thorough/Custom), multi-business scoping, Member vs Contact distinction, and dual output (.md for AI-assisted fixes, .html as the Nexudus-branded operator deliverable)
+description: 34-check health audit of Nexudus locations with selectable depth tiers (Quick/Medium/Thorough/Custom), multi-business scoping, Member vs Contact distinction, and dual output (.md for AI-assisted fixes, .html as the Nexudus-branded operator deliverable). Also includes a companion onboarding check-in audit.
 ---
 
 # Nexudus Account Health Audit Skill
@@ -9,17 +9,36 @@ description: 34-check health audit of Nexudus locations with selectable depth ti
 
 ```
 .
-├── README.md          this file — overview and reference
-├── SKILL.md           Claude Code skill manifest (trigger conditions + AI execution protocol)
-├── .gitignore         excludes runtime output (.audit-cache/, reports/)
+├── README.md              this file — overview and reference
+├── SKILL.md               Claude Code skill manifest (trigger conditions + AI execution protocol)
+├── .gitignore             excludes runtime output (.audit-cache/)
 └── scripts/
-    └── audit.js       the audit tool — single self-contained Node script, zero dependencies
+    ├── audit.js            account-health audit entry point (34 checks)
+    ├── onboarding-audit.js onboarding check-in audit entry point (22 checks)
+    └── lib/
+        ├── brand.js              official Nexudus brand: palette, fonts, shared report CSS
+        ├── log.js                console output router (interactive progress line vs plain logging)
+        ├── config.js             constants + resolveReportsDir() (Desktop output folder)
+        ├── nexudus-cli.js        CLI wrapper: spawn, retries, concurrency gate, disk cache
+        ├── data.js               entity getters + prefetch, business-scoping
+        ├── check-defs.js         health-audit check registry (CHECK_DEFS, CHECK_TIERS, REMEDIATIONS)
+        ├── report-html.js        health-audit HTML report (built on brand.js)
+        ├── report-markdown.js    health-audit Markdown report
+        ├── detokenize.js         reverses CLI PII tokens for the HTML report
+        ├── util.js, state.js     shared helpers / run state
+        ├── checks/               34 health-audit check implementations
+        ├── onboarding-check-defs.js   onboarding-audit check registry
+        ├── onboarding-report.js       onboarding-audit HTML report (built on brand.js)
+        └── onboarding-checks/         25 onboarding-audit check implementations
 ```
 
 To use the skill, drop the folder into a Claude Code `skills/nexudus-audit/`
-directory; to run the tool directly, see **Invocation Modes** below. At runtime
-`audit.js` creates `scripts/reports/` (the generated reports) and, with `--cache`,
-`.audit-cache/` — both are gitignored and never committed.
+directory; to run either tool directly, see **Invocation Modes** below. Both
+scripts write reports to a `Nexudus Audit Reports` folder on the operator's
+**Desktop** (created automatically, including OneDrive-redirected Desktops) —
+see **Output Filenames & Location**. With `--cache`, `audit.js` also creates
+`.audit-cache/` next to the script; that folder is gitignored and never
+committed.
 
 ## What It Does
 
@@ -30,9 +49,21 @@ Runs up to 34 checks across Coworker accounts, contracts, invoices, products, re
 
 ### Branding the HTML report
 
-Branding constants live in `scripts/audit.js` (search for `BRAND_PRIMARY`, just above `buildHtmlReport`). They were sampled from `help.nexudus.com`; if Nexudus rebrands, edit the block — `BRAND_PRIMARY` (currently `#FF5100`), `BRAND_PRIMARY_TEXT`, `BRAND_INK`, `BRAND_INK_MUTED`, `BRAND_SURFACE`, `BRAND_SURFACE_ALT`, `BRAND_BORDER`, `BRAND_RADIUS`, `BRAND_FONT_BODY` (Nunito), `BRAND_FONT_HEAD` (Red Hat Display). A separate `SEVERITY_COLORS` palette (HIGH/MEDIUM/LOW/INSIGHT) is kept deliberately distinct from the brand orange so the brand colour is never read as a severity signal.
+Branding is the **official Nexudus brand** and lives in one place: `scripts/lib/brand.js`. Both `report-html.js` (health audit) and `onboarding-report.js` (onboarding audit) import from it, so a rebrand only requires editing this one file.
 
-The remediation copy that appears in each finding's "Recommended action" card lives in the `REMEDIATIONS` lookup map (also in `scripts/audit.js`, just above `CHECK_DEFS`). Each entry is `{ steps, helpUrl }` keyed by the check's `key` field. To revise a step, edit that entry — no other code changes needed.
+- `C` — the full palette: hero orange `#FE4D00` (pale `#FFF2EC`, light `#FFDACC`, medium `#FF6E2F`, dark `#723031`), navy `#212C6A`, blue `#5757F4` (pale `#F1F4FF`, light `#C5CCFF`), green `#28B95F` (pale `#E0FFF0`, light `#9AE9B8`, dark `#00703E`), pink `#FF4F95` (pale `#FFF0F5`, light `#FFCCDF`, dark `#6D1A3B`), and neutrals (white `#FDFDFD`, bg `#F8F8F8`, borders, greys).
+- `FONT_DISPLAY` (Parkinsans, headings/labels) and `FONT_BODY` (Poppins, body/table text), loaded via `GOOGLE_FONTS_URL` with system-font fallbacks so the report still renders offline.
+- `SEVERITY_COLORS` maps the health audit's HIGH/MEDIUM/LOW/INSIGHT severities onto the brand palette (HIGH→pink, MEDIUM→hero orange, LOW→blue, INSIGHT→grey), each with `{ badge, bg, border, text }`. `STATUS` does the same for the onboarding audit's pass/warn/fail/skip results (pass→green, warn→orange, fail→pink, skip→grey).
+- `baseCss()` returns the shared template shell both reports build on: the 960px page card, navy header with a **text wordmark** ("nexudus" — no logo image file exists yet; swap the `.wordmark` div for an `<img>`/data-URI once one is available), 4px orange accent bar, blue-pale score bar, collapsible `<details class="section">` groups with count pills and a rotating chevron, badges, pills, and the "Powered by Nexudus" footer.
+
+The remediation copy that appears in each health-audit finding's "Recommended action" card lives in the `REMEDIATIONS` lookup map in `scripts/lib/check-defs.js`. Each entry is `{ steps, helpUrl }` keyed by the check's `key` field. To revise a step, edit that entry — no other code changes needed.
+
+### Console output
+
+Both scripts route all console output through `scripts/lib/log.js` instead of calling `console.*` directly:
+
+- **Interactive (TTY on both stdout and stderr)** — after the Business-ID/depth prompts, the run shows a single redrawn status line on stderr (e.g. `Fetching data… 3/7 entities`, then `[12/34] #14 Stale draft invoices`) instead of a line per check. Warnings/errors always interrupt the line, print in full, then let it resume. The run ends with a clean summary block: elapsed time, issue/pass-fail counts, and the clickable `file:///` HTML link in bold.
+- **Non-TTY / piped (the AI-driven skill flow, or any redirected output)** — plain sequential logging, no ANSI escapes or `\r`, byte-identical to the previous per-check `[i/N] … — PASS/N issue(s)` lines. This is what the AI-driven protocol below parses, so it is deliberately unchanged.
 
 ## Invocation Modes
 
@@ -203,17 +234,54 @@ Only checks that actually ran appear in either report — no misleading "0 issue
 
 ## Output Filenames & Location
 
-- **Default location:** `skills/nexudus-audit/scripts/reports/` (i.e. a `reports/` folder next to `audit.js`, via `path.join(__dirname, 'reports')`)
-- **Files:** 
-  - `account-audit-YYYY-MM-DD-HH-MM-SS.md` (full technical report with fix commands + raw JSON)
-  - `account-audit-YYYY-MM-DD-HH-MM-SS.html` (operator-friendly report, derived from `.md` path)
-- **Override with `--output <path>`:** Both files are written to the directory of your specified path (`.html` derived from `.md`)
-- **Cleanup:** Simply delete the `reports/` folder when you're done accumulating audit runs
+- **Default location:** `<Desktop>\Nexudus Audit Reports\`, resolved by `resolveReportsDir()` in `scripts/lib/config.js` and created automatically if missing. On Windows it asks PowerShell for the real Desktop path (`[Environment]::GetFolderPath("Desktop")`), which correctly follows a OneDrive-redirected Desktop; if that fails it falls back to `<home>/Desktop`, and if no Desktop can be resolved at all (headless/CI), it falls back to the legacy `scripts/reports/` next to the script so automation never breaks.
+- **Files:**
+  - `account-audit-YYYY-MM-DD-HH-MM-SS.md` (health audit — full technical report with fix commands + raw JSON)
+  - `account-audit-YYYY-MM-DD-HH-MM-SS.html` (health audit — operator-friendly report, derived from `.md` path)
+  - `onboarding-audit-YYYY-MM-DD-HH-MM-SS.html` (onboarding audit — HTML only, no `.md`)
+- **Override with `--output <path>`:** Both/either file is written to the directory of your specified path (`.html` derived from `.md` for the health audit) — this is unchanged and takes priority over the Desktop default.
+- **Cleanup:** Simply delete files from the `Nexudus Audit Reports` folder when you're done accumulating audit runs
 
 (HTML file path is output as a clickable `file:///` URL in the terminal for easy access.)
 
+## Onboarding Check-in Audit (`scripts/onboarding-audit.js`)
+
+A second, smaller audit for **routine check-ins with newly onboarded clients during their first year** — not account-health issues, but setup-correctness/readiness gaps (in the spirit of samaudittoollocal's AI Agent readiness checks): are plans properly configured with benefits, are rates set on resources and correctly assigned, is the location profile complete, and so on.
+
+Differences from the health audit:
+- **No depth tiers.** All 22 checks always run — the audit is small and cheap enough that Quick/Medium/Thorough scoping isn't needed.
+- **pass / warn / fail / skip** semantics instead of severity + issue count, matching `STATUS` in `brand.js`.
+- **HTML only** — no `.md`, since there's no AI-driven fix flow for this audit; the HTML is the entire deliverable, opened directly by the operator.
+- Same Business-ID prompt, validation, lock/auth handling, and Desktop output location as `audit.js`; run it the same two ways:
+  ```bash
+  node scripts/onboarding-audit.js                                   # interactive
+  node scripts/onboarding-audit.js --business-ids 12345,67890         # non-interactive
+  node scripts/onboarding-audit.js --show-checks                      # list checks and exit
+  ```
+
+**22 checks across 5 sections:**
+
+| Section | Checks |
+|---|---|
+| **Plans & pricing** (#1–5) | Plans published & visible · Pricing & descriptions complete · Tax rate/financial account assigned · Booking/printing credit benefits attached · Plan naming matches plan type |
+| **Resources & rates** (#6–10) | Bookable resources have a rate · Descriptions & capacity set · Amenity flags set · Booking limits configured · Access hours match opening hours |
+| **Location & portal basics** (#11–16) | Location profile complete · Opening hours configured · Coordinates set · Payment gateway connected · Tax rates configured · Terms & conditions/house rules set |
+| **Member experience readiness** (#17) | Help-desk departments have managers |
+| **First-year hygiene** (#18–22) | Active contracts billed on schedule · Space usage activity present · No long-standing £0 contracts past go-live · No stale onboarding drafts · Operators active in last 30 days |
+
+One check (#10, resource access-hours-vs-opening-hours) returns `skip` with a hint rather than a false pass/fail — the Nexudus CLI doesn't expose a field linking a resource's access hours to its business's opening hours, so it's flagged for manual verification instead of guessed at.
+
+Three checks originally planned for "Members portal branding," "Welcome/onboarding email template customization," and "Check-in method configured" were **removed** rather than shipped as permanent skips — the CLI exposes no readable signal for any of the three (write-only upload fields, non-diffable template metadata, and a setting that spans business settings/access-control/devices with no single field), so there was no way to ever turn them into a real pass/warn/fail. They remain good candidates for a future check if the CLI adds the right field.
+
+Full registry: `scripts/lib/onboarding-check-defs.js` (`ONBOARDING_CHECK_DEFS`). Implementations: `scripts/lib/onboarding-checks/*.js`. Report: `scripts/lib/onboarding-report.js` (`buildOnboardingReport(sections, scopeMeta)`), built on the same `scripts/lib/brand.js` shell as the health audit.
+
 ## Entry Points
 
-- Main: `async main()` — parses args, runs interactive prompts if needed, sets `SELECTED_BUSINESS_IDS`, selects checks via `selectChecks(level, customNums)`, runs them, writes both reports.
+**Health audit (`scripts/audit.js`):**
+- Main: `async main()` — parses args, runs interactive prompts if needed, sets `SELECTED_BUSINESS_IDS`, selects checks via `selectChecks(level, customNums)`, runs them, writes both reports to `resolveReportsDir()`.
 - Individual checks: `checkDuplicateEmails()`, `checkDesksOnCancelledContracts()`, etc.
-- Registry: `CHECK_DEFS` array — defines name, severity, columns, row renderer, check function for each of 34 checks. Tier membership in `CHECK_TIERS` map (by check number).
+- Registry: `CHECK_DEFS` array (`scripts/lib/check-defs.js`) — defines name, severity, columns, row renderer, check function for each of 34 checks. Tier membership in `CHECK_TIERS` map (by check number).
+
+**Onboarding audit (`scripts/onboarding-audit.js`):**
+- Main: `async main()` — parses args (no `--level`/`--checks`/`--serial`), runs interactive prompts if needed, runs every entry in `ONBOARDING_CHECK_DEFS` in order, writes the HTML report to `resolveReportsDir()`.
+- Registry: `ONBOARDING_CHECK_DEFS` array (`scripts/lib/onboarding-check-defs.js`) — `{ num, key, name, section, fn }` per check; `fn()` returns `{ status, detail, hint }`.

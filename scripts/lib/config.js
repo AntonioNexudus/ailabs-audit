@@ -1,8 +1,11 @@
-// Static configuration: thresholds, timeouts, the run timestamp, and the
-// resolved path to the nexudus CLI binary. No logic, no mutable state.
+// Static configuration: thresholds, timeouts, the run timestamp, the resolved
+// path to the nexudus CLI binary, and the reports-folder resolver. No mutable
+// state.
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { spawnSync } = require('child_process');
 
 const PAGE_SIZE = 500;
 // PII redaction (CLI 5.0.16+) tokenizes every PII field on every record, so a
@@ -51,6 +54,45 @@ const CLI = (() => {
   return 'nexudus';
 })();
 
+// ---------------------------------------------------------------------------
+// Default reports folder: "<Desktop>\Nexudus Audit Reports" so operators find
+// the deliverables where they expect them. --output still overrides (that
+// path is honored verbatim by audit.js and never routes through here).
+// ---------------------------------------------------------------------------
+
+// Resolve the user's real Desktop directory, or null when there isn't one
+// (headless/CI). On Windows the shell API is asked first because OneDrive
+// "Known Folder Move" commonly redirects the Desktop away from
+// %USERPROFILE%\Desktop; GetFolderPath follows the redirect.
+function resolveDesktopDir() {
+  if (process.platform === 'win32') {
+    try {
+      const r = spawnSync('powershell', [
+        '-NoProfile', '-Command', '[Environment]::GetFolderPath("Desktop")',
+      ], { encoding: 'utf8', timeout: 15_000, windowsHide: true });
+      if (r.status === 0 && r.stdout) {
+        const dir = r.stdout.trim();
+        if (dir && fs.existsSync(dir)) return dir;
+      }
+    } catch { /* PowerShell unavailable — fall through to homedir guess */ }
+  }
+  const fallback = path.join(os.homedir(), 'Desktop');
+  return fs.existsSync(fallback) ? fallback : null;
+}
+
+// Directory the audit reports are written to when --output is not given.
+// Created (recursively, idempotently) on every call so callers can write into
+// the returned path directly. Falls back to the legacy scripts/reports/
+// folder when no Desktop exists, so headless automation never breaks.
+function resolveReportsDir() {
+  const desktop = resolveDesktopDir();
+  const dir = desktop
+    ? path.join(desktop, 'Nexudus Audit Reports')
+    : path.join(__dirname, '..', 'reports');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 module.exports = {
   PAGE_SIZE, CLI_TIMEOUT, MAX_CONCURRENT_CLI_REDACTED, MAX_CONCURRENT_CLI_CLEAR,
   CLI_RETRIES, RETRY_BACKOFF_MS, MAX_PAGES,
@@ -58,4 +100,5 @@ module.exports = {
   CHECKIN_STALE_HOURS, CONTRACT_LIMIT_WARNING, CONTRACT_LIMIT_MAX,
   STALE_OPERATOR_DAYS, UNASSIGNED_TICKET_DAYS,
   TODAY, TODAY_STR, TIMESTAMP, CLI,
+  resolveReportsDir,
 };

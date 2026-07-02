@@ -11,6 +11,7 @@ const {
   MAX_CONCURRENT_CLI_REDACTED,
 } = require('./config');
 const state = require('./state');
+const log = require('./log');
 
 // Async-paginator concurrency cap. Defaults to the redacted (sequential) limit;
 // main() raises it for clear runs via setConcurrencyLimit().
@@ -186,7 +187,7 @@ function readDiskCache(entityKey) {
     return { data, ageSec: Math.floor(age / 1000) };
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      console.warn(`  [cache] read failed for ${entityKey}: ${err.message}`);
+      log.warn(`  [cache] read failed for ${entityKey}: ${err.message}`);
     }
     return null;
   }
@@ -202,7 +203,7 @@ function writeDiskCache(entityKey, data) {
     fs.renameSync(tmp, file);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* tmp may not exist; ignore */ }
-    console.warn(`  [cache] write failed for ${entityKey}: ${err.message}`);
+    log.warn(`  [cache] write failed for ${entityKey}: ${err.message}`);
   }
 }
 
@@ -210,7 +211,7 @@ function fetchAllPagesCached(entityKey, baseArgs, pageSize) {
   const { key, argSets } = scopedPlan(entityKey, baseArgs);
   const cached = readDiskCache(key);
   if (cached) {
-    console.log(`  [cache] hit ${key} (age ${cached.ageSec}s, ${cached.data.length} rows)`);
+    log.info(`  [cache] hit ${key} (age ${cached.ageSec}s, ${cached.data.length} rows)`);
     return cached.data;
   }
   const data = unionById(argSets.map(args => fetchAllPages(args, pageSize)));
@@ -331,7 +332,7 @@ async function fetchAllPagesCachedAsync(entityKey, baseArgs) {
   const { key, argSets } = scopedPlan(entityKey, baseArgs);
   const cached = readDiskCache(key);
   if (cached) {
-    console.log(`  [cache] hit ${key} (age ${cached.ageSec}s, ${cached.data.length} rows)`);
+    log.info(`  [cache] hit ${key} (age ${cached.ageSec}s, ${cached.data.length} rows)`);
     return cached.data;
   }
   // Fetch the selected businesses concurrently (the slot gate enforces the

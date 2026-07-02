@@ -1,6 +1,7 @@
 const { safeId } = require('../util');
 const { runCLI, fetchAllPages } = require('../nexudus-cli');
 const { getBusinesses } = require('../data');
+const log = require('../log');
 
 // #26. Active help-desk departments with no managers assigned — incoming tickets
 // to these departments fall through with no operator notified.
@@ -18,7 +19,7 @@ function checkHelpDeskDeptsNoManagers() {
         '--active', 'true',
       ]);
     } catch (err) {
-      console.warn(`  [warn] skipping help-desk departments for business ${biz.Id} (${biz.Name}): ${err.message}`);
+      log.warn(`  [warn] skipping help-desk departments for business ${biz.Id} (${biz.Name}): ${err.message}`);
       continue;
     }
 

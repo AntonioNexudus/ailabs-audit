@@ -7,8 +7,10 @@
 const fs = require('fs');
 const path = require('path');
 const state = require('./lib/state');
+const log = require('./lib/log');
 const {
   TODAY_STR, TIMESTAMP, MAX_CONCURRENT_CLI_CLEAR, MAX_CONCURRENT_CLI_REDACTED,
+  resolveReportsDir,
 } = require('./lib/config');
 const { classifyError } = require('./lib/util');
 const {
@@ -299,6 +301,13 @@ function detectPiiMode() {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  const startedAt = Date.now();
+
+  // Pick the output mode once: interactive (single redrawing progress line,
+  // chatter suppressed) only when both stdout and stderr are real TTYs; any
+  // piped/redirected stream (incl. the AI-driven skill flow) gets plain
+  // sequential logging with no ANSI escapes.
+  log.init({ interactive: !!(process.stdout.isTTY && process.stderr.isTTY) });
 
   // Print the tier-tagged checklist and exit. The table is built from static
   // data, so skip the lock, auth check and PII probe entirely. The AI-driven
@@ -322,7 +331,7 @@ async function main() {
     return;
   }
   if (lock.reclaimed) {
-    console.warn('Reclaimed stale lock from previous run.');
+    log.warn('Reclaimed stale lock from previous run.');
   }
 
   // Verify auth upfront before doing anything else (prompts, data fetches, etc).
@@ -350,7 +359,7 @@ async function main() {
   // CLI); clear fetches are safe to parallelise. Set before any fetch.
   setConcurrencyLimit(state.fetchClear ? MAX_CONCURRENT_CLI_CLEAR : MAX_CONCURRENT_CLI_REDACTED);
   if (state.fetchClear) {
-    console.log(`pii-mode is unlocked: fetching clear data with up to ${MAX_CONCURRENT_CLI_CLEAR} parallel CLI calls.`);
+    log.info(`pii-mode is unlocked: fetching clear data with up to ${MAX_CONCURRENT_CLI_CLEAR} parallel CLI calls.`);
   }
 
   // Fetch the operator's accessible businesses up front so we can validate any
@@ -370,7 +379,7 @@ async function main() {
   const operatorCacheKey = computeOperatorCacheKey(accessibleBusinessIds);
   configureCache(diskCacheEnabled, operatorCacheKey);
   if (diskCacheEnabled) {
-    console.log(`Disk cache enabled (TTL 1h) — ${path.join(CACHE_DIR_BASE, operatorCacheKey)}`);
+    log.info(`Disk cache enabled (TTL 1h) — ${path.join(CACHE_DIR_BASE, operatorCacheKey)}`);
   }
 
   // If running interactively (TTY) and the operator hasn't provided flags,
@@ -418,9 +427,11 @@ async function main() {
     return;
   }
 
-  console.log(`Nexudus Account Health Audit — ${TODAY_STR}`);
-  console.log(`Scope: ${fmtBusinessScope(state.selectedBusinessIds)} | ${fmtChecksScope(opts.level, customNums, selectedDefs.length)}`);
-  console.log('');
+  // Compact scope line, then the single self-updating progress line takes
+  // over (stderr; no-op in plain mode where the per-step logging remains).
+  log.out(`Nexudus Account Health Audit — ${TODAY_STR} · ${fmtBusinessScope(state.selectedBusinessIds)} · ${fmtChecksScope(opts.level, customNums, selectedDefs.length)}`);
+  log.info('');
+  log.progress.start('Preparing…');
 
   // Prefetch shared entities unless --serial was requested. Each getX()
   // returns straight from `cache` afterwards, so the data-fetch phase happens
@@ -437,19 +448,30 @@ async function main() {
       needed.add('coworkersAll');
     }
     // prefetchAll never rejects: failed entities are reported, left uncached,
-    // and re-fetched lazily by their getX() when a check needs them.
-    await prefetchAll([...needed]);
-    console.log('');
+    // and re-fetched lazily by their getX() when a check needs them. The
+    // onEntity callback drives the progress line as fetches settle.
+    const totalEntities = needed.size;
+    if (totalEntities > 0) {
+      log.progress.update(`Fetching data… 0/${totalEntities} entities`);
+    }
+    await prefetchAll([...needed], (done, total) => {
+      log.progress.update(`Fetching data… ${done}/${total} entities`);
+    });
+    log.info('');
   }
 
   const results = {};
+  let erroredChecks = 0;
   for (let i = 0; i < selectedDefs.length; i++) {
     const def = selectedDefs[i];
-    // Run the check first, then log status on its own line. This keeps cache /
-    // prefetch chatter (which might happen inside def.fn()) on separate lines
-    // rather than splicing into a half-written progress prefix.
+    // Interactive: the progress line shows the check that is about to run —
+    // checks are synchronous (spawnSync), so this boundary update is the only
+    // moment the line can move. Plain mode: no progress line; the per-check
+    // result line below is the (unchanged) progress signal.
+    log.progress.update(`[${i + 1}/${selectedDefs.length}] #${def.num} ${def.name}`);
     const prefix = `  [${i + 1}/${selectedDefs.length}] #${def.num} ${def.name}`;
     let summary;
+    let errored = false;
     try {
       results[def.key] = def.fn();
       const r = results[def.key];
@@ -458,16 +480,25 @@ async function main() {
       const errorClass = classifyError(err);
       results[def.key] = { status: 'ERROR', items: [], error: err.message, errorClass };
       summary = `ERROR [${errorClass}]: ${err.message}`;
+      errored = true;
+      erroredChecks++;
     }
-    console.log(`${prefix} — ${summary}`);
+    if (errored && log.isInteractive()) {
+      // Errors must surface even with per-check chatter suppressed.
+      log.warn(`${prefix} — ${summary}`);
+    }
+    // Plain mode keeps the exact per-check output line; dropped in interactive.
+    log.info(`${prefix} — ${summary}`);
   }
 
-  console.log('');
+  log.info('');
+  log.progress.update('Writing reports…');
 
-  // Determine output paths
+  // Determine output paths. Without --output, reports go to the Desktop
+  // "Nexudus Audit Reports" folder (resolveReportsDir creates it).
   const reportsDir = opts.output
     ? path.dirname(path.resolve(opts.output))
-    : path.join(__dirname, 'reports');
+    : resolveReportsDir();
   fs.mkdirSync(reportsDir, { recursive: true });
 
   const mdPath = opts.output
@@ -515,7 +546,7 @@ async function main() {
   // the .md will contain real PII, so warn loudly. We never tokenize data
   // ourselves.
   if (state.fetchClear) {
-    console.warn('Warning: pii-mode is UNLOCKED — the .md will contain REAL PII (the CLI did not tokenize it). Run with pii-mode locked for a redacted .md.');
+    log.warn('Warning: pii-mode is UNLOCKED — the .md will contain REAL PII (the CLI did not tokenize it). Run with pii-mode locked for a redacted .md.');
   }
   const report = buildReport(results, ranDefs, scopeMeta);
   fs.writeFileSync(mdPath, report, 'utf8');
@@ -528,24 +559,34 @@ async function main() {
   const htmlReport = buildHtmlReport(htmlResults, ranDefs, scopeMeta);
   fs.writeFileSync(htmlPath, htmlReport, 'utf8');
   if (!state.fetchClear && tokenMap.size === 0) {
-    console.warn('Note: local PII token map (~/.nexudus/pii-tokens.json) not found — the .html will show tokens, not real values.');
+    log.warn('Note: local PII token map (~/.nexudus/pii-tokens.json) not found — the .html will show tokens, not real values.');
   }
 
-  // Console summary; the user sees this before deciding to share the .md with AI.
-  console.log('');
-  console.log('================================================================');
-  console.log(`  AUDIT COMPLETE — ${totalIssues} issue(s) found across ${selectedDefs.length} check(s)`);
-  console.log('');
-  console.log('  Browser Report (html — Ctrl+Click to open, then Ctrl+P to save as PDF):');
+  // Final summary block; the user sees this before deciding to share the .md
+  // with AI. Progress line is retired first so the block lands on clean rows.
+  log.progress.done();
+  const elapsedSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
   const { pathToFileURL } = require('url');
-  console.log(`    ${pathToFileURL(htmlPath).href}`);
-  console.log('');
-  console.log('  LLM Ready Report (md):');
-  console.log(`    ${mdPath}`);
-  console.log('================================================================');
+  // Bold ANSI only when writing to a real terminal; plain mode stays escape-free.
+  const bold = s => (log.isInteractive() ? `\x1b[1m${s}\x1b[0m` : s);
+  const rule = '─'.repeat(60);
+  log.out('');
+  log.out(rule);
+  log.out(bold(`  Audit complete — ${totalIssues} issue(s) across ${selectedDefs.length} check(s) in ${elapsedSec}s`));
+  if (erroredChecks > 0) {
+    log.out(`  (${erroredChecks} check${erroredChecks === 1 ? '' : 's'} errored — details in the report)`);
+  }
+  log.out('');
+  log.out('  Report (Ctrl+Click to open · Ctrl+P to save as PDF):');
+  log.out(`    ${bold(pathToFileURL(htmlPath).href)}`);
+  log.out('');
+  log.out(`  md (AI-readable): ${mdPath}`);
+  log.out(rule);
 }
 
 main().catch(err => {
+  // Retire any live progress line so the error isn't spliced into it.
+  log.progress.done();
   console.error('Fatal error:', err.message);
   process.exitCode = 1;
 });

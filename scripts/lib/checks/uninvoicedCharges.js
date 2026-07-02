@@ -2,6 +2,7 @@ const { TODAY, CHARGE_STALE_DAYS } = require('../config');
 const { daysBetween, safeId } = require('../util');
 const { fetchAllPages } = require('../nexudus-cli');
 const { getBusinesses } = require('../data');
+const log = require('../log');
 
 // #23. Uninvoiced charges older than 30 days (fetches per business — charges require business filter)
 function checkUninvoicedCharges() {
@@ -15,7 +16,7 @@ function checkUninvoicedCharges() {
     try {
       charges = fetchAllPages(['charges', 'list', '--business-id', safeId(biz.Id), '--invoiced', 'false']);
     } catch (err) {
-      console.warn(`  [warn] skipping charges for business ${biz.Id} (${biz.Name}): ${err.message}`);
+      log.warn(`  [warn] skipping charges for business ${biz.Id} (${biz.Name}): ${err.message}`);
       continue;
     }
 
