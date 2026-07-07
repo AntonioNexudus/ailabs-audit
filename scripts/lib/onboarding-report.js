@@ -13,8 +13,12 @@ const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, STATUS, baseCss, logoDataU
 
 const STATUS_ORDER = ['pass', 'warn', 'fail', 'skip'];
 
+// Human-friendly badge labels (title case reads warmer than shouting caps).
+const STATUS_LABEL = { pass: 'Pass', warn: 'Warning', fail: 'Failed', skip: 'Skipped' };
+
 function badge(status) {
-  return `<span class="badge ${status}">${escHtml(status.toUpperCase())}</span>`;
+  const label = STATUS_LABEL[status] || status;
+  return `<span class="badge ${status}">${escHtml(label)}</span>`;
 }
 
 function pill(status, n) {
@@ -114,6 +118,9 @@ function reportCss() {
 .check.warn { background: ${STATUS.warn.bg}; border-color: ${STATUS.warn.border}; }
 .check.fail { background: ${STATUS.fail.bg}; border-color: ${STATUS.fail.border}; }
 .check.skip { background: ${STATUS.skip.bg}; border-color: ${STATUS.skip.border}; }
+/* Status badges read as title case here (Pass/Warning/Failed/Skipped), so undo
+   the shared shell's uppercasing and tighten the wide tracking it pairs with. */
+.badge { text-transform: none; letter-spacing: 0.02em; }
 .check-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .check-num { font-family: ${FONT_DISPLAY}; font-size: 11px; font-weight: 600; color: ${C.grey_medium}; }
 .check-name { font-family: ${FONT_DISPLAY}; font-size: 13px; font-weight: 600; color: ${C.navy}; }

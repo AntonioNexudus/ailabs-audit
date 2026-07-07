@@ -112,9 +112,9 @@ Tier membership lives in `CHECK_TIERS` (top of audit.js). Runtime is dominated b
 
 **HIGH (12):** Desks on cancelled contracts, overdue invoices, inactive Members with active contracts, billing behind, stuck cancellations, 12-month writeoffs, out-of-stock, suspended Members with active contracts, suspended contracts past cancellation, deposits on cancelled contracts, team merged-billing payer with no payment method, future bookings on archived resources
 
-**MEDIUM (16):** Expired discount codes, stale drafts, missing tax/financial account, frozen contracts past end date, uninvoiced bookings, no payment method, contract limit approaching, low stock, archived plans with active contracts, unclosed checkins, uninvoiced charges, overpaid invoices, stale operators, help-desk departments with no managers, unassigned help-desk tickets, misconfigured plan/product booking credits
+**MEDIUM (16):** Expired discount codes, unsent draft invoices, missing tax/financial account, paused contracts past restart date, uninvoiced bookings, no payment method, contract limit approaching, low stock, archived plans with active contracts, check-ins left open, uninvoiced charges, overpaid invoices, quiet admin logins, help-desk departments with no managers, unassigned help-desk tickets, plan/product credits that can't be used
 
-**LOW (3):** Partial payments, impossible discount date range, resources with no booking rate
+**LOW (3):** Partly-paid invoices, discount codes that start after they end, resources with no booking rate
 
 **INSIGHT (3):** Duplicate Coworker emails, contract price differs from plan price, duplicate contracts (same Member + plan)
 
@@ -247,7 +247,7 @@ Only checks that actually ran appear in either report — no misleading "0 issue
 
 ## Onboarding Check-in Audit (`scripts/onboarding-audit.js`)
 
-A second, smaller audit for **routine check-ins with newly onboarded clients during their first year** — not account-health issues, but setup-correctness/readiness gaps (in the spirit of samaudittoollocal's AI Agent readiness checks): are plans properly configured with benefits, are rates set on resources and correctly assigned, is the location profile complete, and so on.
+A second, smaller audit for **routine check-ins with newly onboarded clients during their first year** — not account-health issues, but setup gaps that trip new spaces up: are plans set up with their benefits, are rates on resources and assigned correctly, is the location profile complete, and so on.
 
 Differences from the health audit:
 - **No depth tiers.** All 30 checks always run — the audit is small and cheap enough that Quick/Medium/Thorough scoping isn't needed.
@@ -264,13 +264,13 @@ Differences from the health audit:
 
 | Section | Checks |
 |---|---|
-| **Plans & pricing** (#1–5) | Plans published & visible · Pricing & descriptions complete · Tax rate/financial account assigned · Booking/printing credit benefits attached · Plan naming matches plan type |
-| **Resources & rates** (#6–10, #29–30) | Bookable resources have a rate · Descriptions & capacity set · Amenity flags set · Booking limits configured · Access hours match opening hours · No booking-policy rule at all · Booking-policy rules missing key limits |
-| **Location & portal basics** (#11–16) | Location profile complete · Opening hours configured · Coordinates set · Payment gateway connected · Tax rates configured · Terms & conditions/house rules set |
-| **Member experience readiness** (#17) | Help-desk departments have managers |
-| **First-year hygiene** (#18–22) | Active contracts billed on schedule · Space usage activity present · No long-standing £0 contracts past go-live · No stale onboarding drafts · Operators active in last 30 days |
-| **Financial & compliance hygiene** (#23–25) | Event attendees checked-in but not billed · Contract signatories missing AML/KYC verification · Time-pass catalog readiness |
-| **Integrations & system config** (#26–28) | Inactive or broken webhooks · Inactive validation rules · Required custom fields not shown on any form |
+| **Plans & pricing** (#1–5) | Plans published & visible · Pricing & descriptions complete · Tax rate/account assigned · Booking/printing credits included · Plan names match the plan type |
+| **Resources & rates** (#6–10, #29–30) | Bookable resources have a rate · Description & capacity set · Amenities filled in · Booking limits set · Access hours line up with opening hours · No booking policy at all · Booking policies missing key limits |
+| **Location & portal basics** (#11–16) | Location profile complete · Opening hours set · Pinned on the map · Payment gateway connected · Tax rates set up · Terms & house rules in place |
+| **Member experience** (#17) | Help-desk departments have a manager |
+| **Settling-in checks** (#18–22) | Active contracts billed on schedule · Members are actually using the space · No long-running £0 contracts since opening · No leftover onboarding drafts · Operators active in last 30 days |
+| **Money & compliance** (#23–25) | Event attendees checked in but never billed · Contract signers missing AML/KYC checks · Time passes ready to sell |
+| **Integrations & setup** (#26–28) | Webhooks switched off or broken · Validation rules switched off · Required custom fields on no form |
 
 One check (#10, resource access-hours-vs-opening-hours) returns `skip` with a hint rather than a false pass/fail — the Nexudus CLI doesn't expose a field linking a resource's access hours to its business's opening hours, so it's flagged for manual verification instead of guessed at. Checks #23–30 (added after the initial 22) follow the same "verify every CLI flag via `--help` before writing a check" discipline; #24 (AML/KYC) deliberately flags only a fully-missing AML check status rather than interpreting a sanctions-score threshold or a specific identity-check provider's fields, since neither is documented well enough by the CLI to interpret safely — see the code comment in `scripts/lib/onboarding-checks/contractContactsAmlMissing.js` for the full reasoning.
 

@@ -165,15 +165,15 @@ const REMEDIATIONS = {
   },
   outOfStock: {
     steps: 'Open Inventory > Products, click the three-dot icon next to each out-of-stock product, and select Adjust stock. Enter a positive whole-number quantity and confirm. If physical stock is no longer being managed, open the product\'s Availability tab and disable stock tracking instead.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/adjusting-products-stock',
+    helpUrl: 'https://help.nexudus.com/docs/adjusting-products-stock',
   },
   archivedMembers: {
     steps: 'Open Operations > Members and contacts and locate each suspended member. Go to Sales > Contracts and cancel all active contracts via the quick-action Cancel contract option. If the member needs to be reactivated first, lift the suspension under Bulk actions > Suspend account, then cancel the contracts.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/suspending-customer-accounts',
+    helpUrl: 'https://help.nexudus.com/docs/suspending-customer-accounts',
   },
   suspendedStuckCancel: {
     steps: 'Go to Operations > Members and contacts, select the member, and lift the suspension via Bulk actions > Suspend account. Then open Finance > Contracts, locate their contract, click Cancel contract, and set the cancellation to the intended date. Re-suspend the member afterwards if required.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/suspending-customer-accounts',
+    helpUrl: 'https://help.nexudus.com/docs/suspending-customer-accounts',
   },
   deposits: {
     steps: 'Open Operations > Members and contacts, select the customer, and go to Sales > Products. In the Views menu choose Show all, locate the deposit product, click the invoice icon, check the deposit line, and click Refund item. Pick the refund method, then process the actual cash or card payout through your payment provider if needed.',
@@ -185,11 +185,11 @@ const REMEDIATIONS = {
   },
   duplicateContracts: {
     steps: 'Open Finance > Contracts and filter by the affected member to see all their contracts. Confirm which contract is the duplicate (same plan, overlapping dates), open it, click the three-dot icon, and select Cancel contract. Cancel or credit any invoices linked to the duplicate contract under Finance > Invoices if charges need to be reversed.',
-    helpUrl: 'https://help.nexudus.com/docs/contracts',
+    helpUrl: 'https://help.nexudus.com/docs/editing-contracts',
   },
   futureBookingsArchived: {
     steps: 'Open Operations > Calendar and switch to the resource view (or filter by the archived resource) to see its future bookings. For each booking, either change the resource to an active equivalent or cancel the booking via the booking detail panel. Notify affected coworkers of the change.',
-    helpUrl: 'https://help.nexudus.com/docs/bookings',
+    helpUrl: 'https://help.nexudus.com/docs/editing-bookings',
   },
   discounts: {
     steps: 'Open Finance > Discounts > Discount Codes, click each expired but still-active code, and toggle off "This discount is active". Click Save Changes. If the code should keep running, switch to the Available dates tab and extend the end date instead.',
@@ -197,19 +197,19 @@ const REMEDIATIONS = {
   },
   drafts: {
     steps: 'Open Finance > Invoices and switch to the Draft Invoices view. Review each draft older than 7 days and either convert it to a proper invoice via the convert action, or delete it if no longer needed. Drafts cannot collect payment or appear on the member portal until converted.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/draft-invoices',
+    helpUrl: 'https://help.nexudus.com/docs/creating-draft-invoices',
   },
   missingTax: {
     steps: 'Open Finance > Invoices & tax > Chart of Accounts. For each item missing a tax rate or financial account, click the icon in the Tax column to assign a rate, and the icon in the Accounts column to assign a financial account. Work through every tab (Products, Plans, Resources, Passes, Tickets) so accounting integrations stay accurate.',
-    helpUrl: 'https://help.nexudus.com/docs/preparing-accounting-integrations',
+    helpUrl: 'https://help.nexudus.com/docs/assigning-financial-accounts-to-inventory-items',
   },
   frozenPast: {
     steps: 'Open Finance > Contracts and locate contracts currently in a frozen/paused state with a freeze end date in the past. Open each one and use the unfreeze action in the contract detail view to resume normal billing. Invoicing restarts on the next billing cycle.',
-    helpUrl: 'https://help.nexudus.com/docs/contract-freezing',
+    helpUrl: 'https://help.nexudus.com/docs/unfreezing-contracts-as-an-admin',
   },
   uninvoicedBookings: {
     steps: 'Open Operations > Members and contacts, select the affected coworker, and click the Bookings section under Sales. Click the quick-action icon next to each un-invoiced past booking and select Invoice booking. To prevent recurrence, toggle on "Invoice this booking when it is saved" when creating future bookings.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/invoicing-bookings',
+    helpUrl: 'https://help.nexudus.com/docs/invoicing-bookings',
   },
   noPaymentMethod: {
     steps: 'Open Operations > Members and contacts, select the member, and click Payments > Payment methods. Click Add payment method, choose the provider (GoCardless, Stripe Direct Debit, or Stripe Legacy), enter the mandate or customer details, and Save. A valid method must be on file for automated invoice collection to run.',
@@ -217,19 +217,19 @@ const REMEDIATIONS = {
   },
   contractLimit: {
     steps: 'Open Finance > Contracts and filter by the affected member to list all their active contracts. Review whether any are redundant or can be consolidated, then cancel the unneeded ones via Cancel contract. Nexudus enforces a hard limit of 25 active contracts per member, so the count must drop below 25 to allow new contracts.',
-    helpUrl: 'https://help.nexudus.com/docs/contracts',
+    helpUrl: 'https://help.nexudus.com/docs/canceling-contracts',
   },
   lowStock: {
     steps: 'Open Inventory > Products, click the three-dot icon next to each low-stock product, and select Adjust stock. Enter a positive quantity to bring stock above the alert level. While there, open the Availability tab to confirm or adjust the alert threshold.',
-    helpUrl: 'https://help.nexudus.com/v3/docs/adjusting-products-stock',
+    helpUrl: 'https://help.nexudus.com/docs/adjusting-products-stock',
   },
   archivedTariffs: {
     steps: 'Open Finance > Contracts and filter for the affected contracts. For each one on an archived plan, either cancel the contract or use the upgrade/downgrade option to move it onto an active plan. Archived plans can no longer be assigned to new contracts.',
-    helpUrl: 'https://help.nexudus.com/docs/contracts',
+    helpUrl: 'https://help.nexudus.com/docs/editing-contracts',
   },
   unclosedCheckins: {
     steps: 'Open Operations > Check-ins and filter or sort to find records with no checkout time older than 24 hours. Click each open record and manually enter a checkout time to close it, then save. Long-open check-ins distort utilisation reports and may affect time-pass deductions.',
-    helpUrl: 'https://help.nexudus.com/docs/check-ins',
+    helpUrl: 'https://help.nexudus.com/docs/manually-checking-in-customers',
   },
   uninvoicedCharges: {
     steps: 'Open Finance > Invoices and click Add invoice. Select the affected member, pending charges on their account are pulled into the new invoice automatically. Review the line items, set any options needed, and click Save Changes to issue the invoice and clear the pending charges.',
@@ -245,15 +245,15 @@ const REMEDIATIONS = {
   },
   helpDeskDeptsNoManagers: {
     steps: 'Open Operations > Help-desk > Departments and click the department with no manager. Select one or more admins in the Department managers field and click Save Changes. Managers receive email notifications for every new ticket submitted to that department.',
-    helpUrl: 'https://help.nexudus.com/docs/managing-help-desk-departments',
+    helpUrl: 'https://help.nexudus.com/docs/editing-help-desk-departments',
   },
   unassignedHelpDeskTickets: {
     steps: 'Open Operations > Help-desk to see all incoming tickets. Click each open ticket with no assignee, pick a staff member in the assignment field, set a priority, and save. Triaging unassigned tickets daily prevents coworker requests from going unanswered.',
-    helpUrl: 'https://help.nexudus.com/docs/help-desk',
+    helpUrl: 'https://help.nexudus.com/docs/managing-help-desk-requests',
   },
   creditsSetup: {
     steps: 'Open Inventory > Plans (or Products) and edit the plan/product that releases the flagged credit, then open its Benefits / Credits section. For a credit that grants nothing, set a positive Credit amount. For a credit that can never be spent, enable at least one use — tick "Can be used for bookings" (and choose eligible resource types), "Can be used for events", or "Universal credit" (products, passes, and charges) — and Save. If the credit is obsolete, delete it so it stops releasing to members on renewal/purchase.',
-    helpUrl: null,
+    helpUrl: 'https://help.nexudus.com/docs/adding-benefits-to-plans',
   },
   partialPayments: {
     steps: 'Open Finance > Invoices and locate each invoice showing a partial payment balance. If the remainder should be collected, process a manual payment or wait for the next automated attempt. If the balance should be forgiven, credit or cancel the outstanding portion via the invoice\'s Bulk actions menu so the invoice resolves cleanly.',
@@ -281,8 +281,8 @@ const CHECK_DEFS = [
   // --- HIGH ---
   {
     key: 'desks', num: 1, severity: 'HIGH',
-    name: 'Desks on cancelled contracts',
-    heading: 'Desks Assigned to Cancelled Contracts',
+    name: 'Desks still tied to cancelled contracts',
+    heading: 'Desks still assigned to cancelled contracts',
     description: (n) => `${n} desk(s) still assigned to cancelled contracts.`,
     columns: ['Desk', 'Floor Plan', 'Coworker', 'Type', 'Contract ID', 'Cancelled On', 'Fix'],
     row: (i) => [escPipe(i.deskName), escPipe(i.floorPlan), escPipe(i.member), classifyCoworkerById(i.coworkerId), i.contractId, i.cancelledOn, `\`${i.fix}\``],
@@ -290,8 +290,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'invoices', num: 2, severity: 'HIGH',
-    name: 'Overdue unpaid invoices',
-    heading: 'Overdue Unpaid Invoices',
+    name: 'Overdue invoices still unpaid',
+    heading: 'Overdue invoices that are still unpaid',
     description: (n) => `${n} invoice(s) overdue and unpaid (Coworker may be a Member or a Contact).`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Amount', 'Due Date', 'Days Overdue', 'Fix'],
     row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.amount), i.dueDate, i.daysOverdue, `\`${i.fix}\``],
@@ -299,8 +299,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'inactive', num: 3, severity: 'HIGH',
-    name: 'Inactive Members with active contracts',
-    heading: 'Inactive Members with Active Contracts',
+    name: 'Inactive members who still have contracts',
+    heading: 'Inactive members who still have active contracts',
     description: (n) => `${n} inactive Member(s) still have active contracts.`,
     columns: ['Member', 'Email', 'Tariff', 'Contract ID', 'Start Date', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.contractId, i.startDate, `\`${i.fix}\``],
@@ -308,8 +308,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'billingBehind', num: 4, severity: 'HIGH',
-    name: 'Contracts with billing behind',
-    heading: 'Active Contracts with Billing Behind Schedule',
+    name: 'Contracts that have fallen behind on billing',
+    heading: 'Active contracts that have fallen behind on billing',
     description: (n) => `${n} active contract(s) have an invoiced period in the past, billing may have stalled.`,
     columns: ['Member', 'Tariff', 'Invoiced Up To', 'Days Behind', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.tariff), i.invoicedPeriod, i.daysBehind, `\`${i.fix}\``],
@@ -317,8 +317,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'stuckCancellation', num: 5, severity: 'HIGH',
-    name: 'Contracts stuck past cancellation date',
-    heading: 'Contracts with Past Cancellation Date Not Cancelled',
+    name: "Contracts past their cancellation date that didn't cancel",
+    heading: 'Contracts past their cancellation date that never cancelled',
     description: (n) => `${n} contract(s) have a cancellation date in the past but are not yet cancelled.`,
     columns: ['Member', 'Tariff', 'Cancellation Date', 'Days Past', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.tariff), i.cancellationDate, i.daysPast, `\`${i.fix}\``],
@@ -326,8 +326,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'writeoff', num: 6, severity: 'HIGH',
-    name: 'Invoices overdue 12+ months',
-    heading: 'Invoices Overdue 12+ Months (Write-Off Candidates)',
+    name: 'Invoices over a year overdue',
+    heading: 'Invoices over a year overdue — worth writing off',
     description: (n) => `${n} invoice(s) overdue for over a year. Consider voiding or writing off (Coworker may be a Member or a Contact).`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Amount', 'Due Date', 'Days Overdue', 'Fix'],
     row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.amount), i.dueDate, i.daysOverdue, `\`${i.fix}\``],
@@ -335,8 +335,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'outOfStock', num: 7, severity: 'HIGH',
-    name: 'Products out of stock (blocking invoicing)',
-    heading: 'Products Out of Stock (May Block Invoicing)',
+    name: 'Products out of stock (can block invoicing)',
+    heading: 'Products out of stock — this can block invoicing',
     description: (n) => `${n} product(s) with stock tracking enabled have zero or negative stock.`,
     columns: ['Product', 'Business', 'Stock', 'Fix'],
     row: (i) => [escPipe(i.name), escPipe(i.business), i.stock, `\`${i.fix}\``],
@@ -344,8 +344,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'archivedMembers', num: 8, severity: 'HIGH',
-    name: 'Suspended Members with active contracts',
-    heading: 'Suspended (Archived) Members with Active Contracts',
+    name: 'Suspended members who still have contracts',
+    heading: 'Suspended members who still have active contracts',
     description: (n) => `${n} suspended Member(s) still have active contracts. Cancel contracts before or after unsuspending.`,
     columns: ['Member', 'Email', 'Tariff', 'Contract ID', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.contractId, `\`${i.fix}\``],
@@ -353,8 +353,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'suspendedStuckCancel', num: 9, severity: 'HIGH',
-    name: 'Suspended contracts past cancellation date',
-    heading: 'Suspended Contracts Past Their Cancellation Date',
+    name: "Contracts that couldn't cancel while the member was suspended",
+    heading: "Contracts that couldn't cancel because the member was suspended",
     description: (n) => `${n} contract(s) couldn't auto-cancel because the member was suspended at cancellation time.`,
     columns: ['Member', 'Email', 'Tariff', 'Cancellation Date', 'Days Past', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.cancellationDate, i.daysPast, `\`${i.fix}\``],
@@ -362,8 +362,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'deposits', num: 10, severity: 'HIGH',
-    name: 'Deposits on cancelled contracts not refunded',
-    heading: 'Refundable Deposits on Cancelled Contracts',
+    name: 'Deposits on cancelled contracts not yet refunded',
+    heading: 'Refundable deposits still sitting on cancelled contracts',
     description: (n) => `${n} refundable deposit(s) on cancelled contracts may need refund processing (Coworker is typically a Contact now).`,
     columns: ['Product', 'Price', 'Coworker', 'Type', 'Tariff', 'Contract ID', 'Fix'],
     row: (i) => [escPipe(i.product), i.price, escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.tariff), i.contractId, `\`${i.fix}\``],
@@ -371,8 +371,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'teamNoPayment', num: 11, severity: 'HIGH',
-    name: 'Team merged billing: no payment method',
-    heading: 'Teams with Merged Billing Where Paying Member Has No Payment Method',
+    name: 'Team payer has no way to pay',
+    heading: 'Team billing will fail — the paying member has no payment method',
     description: (n) => `${n} team(s) with merged billing have a paying member with no payment method. Entire team billing will fail.`,
     columns: ['Team', 'Paying Member', 'Fix'],
     row: (i) => [escPipe(i.teamName), escPipe(i.payingMember), `\`${i.fix}\``],
@@ -380,8 +380,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'futureBookingsArchived', num: 12, severity: 'HIGH',
-    name: 'Future bookings on archived resources',
-    heading: 'Future Bookings on Archived Resources',
+    name: 'Upcoming bookings on archived resources',
+    heading: 'Upcoming bookings on resources that have been archived',
     description: (n) => `${n} upcoming booking(s) reference archived resources. Coworkers (Members or Contacts) will be affected.`,
     columns: ['Booking #', 'Resource', 'Coworker', 'Date', 'Fix'],
     row: (i) => [i.bookingNumber, escPipe(i.resource), escPipe(i.member), i.date, `\`${i.fix}\``],
@@ -390,8 +390,8 @@ const CHECK_DEFS = [
   // --- MEDIUM ---
   {
     key: 'discounts', num: 13, severity: 'MEDIUM',
-    name: 'Expired active discount codes',
-    heading: 'Expired Discount Codes Still Active',
+    name: 'Expired discount codes still switched on',
+    heading: 'Discount codes that have expired but are still active',
     description: (n) => `${n} discount code(s) expired but still active.`,
     columns: ['Code', 'Description', 'Expired On', 'Days Expired', 'Fix'],
     row: (i) => [escPipe(i.code), escPipe(i.description), i.validTo, i.daysExpired, `\`${i.fix}\``],
@@ -399,8 +399,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'drafts', num: 14, severity: 'MEDIUM',
-    name: 'Stale draft invoices (>7 days)',
-    heading: 'Stale Draft Invoices (>7 Days)',
+    name: 'Draft invoices sitting unsent over a week',
+    heading: 'Draft invoices left unsent for more than a week',
     description: (n) => `${n} draft invoice(s) older than ${DRAFT_STALE_DAYS} days.`,
     columns: ['Invoice #', 'Coworker', 'Amount', 'Created On', 'Days Old', 'Fix'],
     row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), escPipe(i.amount), i.createdOn, i.daysOld, `\`${i.fix}\``],
@@ -408,8 +408,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'missingTax', num: 15, severity: 'MEDIUM',
-    name: 'Plans/products missing tax or financial account',
-    heading: 'Plans/Products Missing Tax Rate or Financial Account',
+    name: 'Plans or products missing a tax rate or account',
+    heading: 'Plans and products missing a tax rate or financial account',
     description: (n) => `${n} item(s) missing tax rate or financial account. May break accounting integrations.`,
     columns: ['Type', 'Name', 'Business', 'Missing', 'Fix'],
     row: (i) => [i.type, escPipe(i.name), escPipe(i.business), escPipe(i.missing), `\`${i.fix}\``],
@@ -417,8 +417,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'frozenPast', num: 16, severity: 'MEDIUM',
-    name: 'Frozen contracts past end date',
-    heading: 'Frozen/Paused Contracts Past Their End Date',
+    name: 'Paused contracts that should have resumed',
+    heading: 'Paused contracts that are past their restart date',
     description: (n) => `${n} contract pause period(s) have ended but may not have resumed.`,
     columns: ['Member', 'Tariff', 'Pause From', 'Pause Until', 'Days Past', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.tariff), i.pauseFrom, i.pauseUntil, i.daysPast, `\`${i.fix}\``],
@@ -426,8 +426,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'uninvoicedBookings', num: 17, severity: 'MEDIUM',
-    name: 'Charged bookings not invoiced (>7 days)',
-    heading: 'Past Bookings Not Yet Invoiced',
+    name: 'Past bookings never invoiced',
+    heading: 'Past bookings that were never invoiced',
     description: (n) => `${n} past booking(s) older than ${BOOKING_STALE_DAYS} days have not been invoiced.`,
     columns: ['Booking #', 'Resource', 'Coworker', 'Date', 'Days Old', 'Fix'],
     row: (i) => [i.bookingNumber, escPipe(i.resource), escPipe(i.member), i.date, i.daysOld, `\`${i.fix}\``],
@@ -435,8 +435,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'noPaymentMethod', num: 18, severity: 'MEDIUM',
-    name: 'Active Members with no payment method',
-    heading: 'Active Members on Paid Plans with No Payment Method',
+    name: 'Paying members with no payment method',
+    heading: 'Active members on paid plans with no payment method',
     description: (n) => `${n} active Member(s) on paid plans have no payment method on file.`,
     columns: ['Member', 'Email', 'Tariff', 'Price', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.price, `\`${i.fix}\``],
@@ -444,8 +444,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'contractLimit', num: 19, severity: 'MEDIUM',
-    name: 'Members approaching 25-contract limit',
-    heading: `Members Approaching ${CONTRACT_LIMIT_MAX}-Contract Limit`,
+    name: 'Members close to the 25-contract limit',
+    heading: `Members getting close to the ${CONTRACT_LIMIT_MAX}-contract limit`,
     description: (n) => `${n} Member(s) have ${CONTRACT_LIMIT_WARNING}+ active contracts (limit is ${CONTRACT_LIMIT_MAX}).`,
     columns: ['Member', 'Active Contracts', 'Limit', 'Fix'],
     row: (i) => [escPipe(i.member), i.activeContracts, i.limit, `\`${i.fix}\``],
@@ -453,8 +453,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'lowStock', num: 20, severity: 'MEDIUM',
-    name: 'Products at low-stock alert level',
-    heading: 'Products At or Below Low-Stock Alert Threshold',
+    name: 'Products running low on stock',
+    heading: 'Products at or below their low-stock alert level',
     description: (n) => `${n} product(s) at or below their stock alert level.`,
     columns: ['Product', 'Business', 'Stock', 'Alert Level', 'Fix'],
     row: (i) => [escPipe(i.name), escPipe(i.business), i.stock, i.alertLevel, `\`${i.fix}\``],
@@ -462,8 +462,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'archivedTariffs', num: 21, severity: 'MEDIUM',
-    name: 'Archived plans with active contracts',
-    heading: 'Archived Plans Still Referenced by Active Contracts',
+    name: 'Archived plans still in use',
+    heading: 'Archived plans still used by active contracts',
     description: (n) => `${n} archived plan(s) still have active contracts.`,
     columns: ['Plan', 'Active Contracts', 'Fix'],
     row: (i) => [escPipe(i.tariff), i.activeContracts, `\`${i.fix}\``],
@@ -471,8 +471,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'unclosedCheckins', num: 22, severity: 'MEDIUM',
-    name: 'Unclosed check-ins (>24 hours)',
-    heading: 'Unclosed Check-ins Older Than 24 Hours',
+    name: 'Check-ins left open over a day',
+    heading: 'Check-ins still open after more than 24 hours',
     description: (n) => `${n} check-in(s) have no checkout time and are older than ${CHECKIN_STALE_HOURS} hours.`,
     columns: ['Coworker', 'Business', 'Checked In', 'Hours Open', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.business), i.from, i.hoursOpen, `\`${i.fix}\``],
@@ -480,8 +480,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'uninvoicedCharges', num: 23, severity: 'MEDIUM',
-    name: 'Uninvoiced charges (>30 days)',
-    heading: 'Uninvoiced Charges Older Than 30 Days',
+    name: 'Charges over a month old, still not invoiced',
+    heading: "Charges more than 30 days old that still aren't invoiced",
     description: (n) => `${n} charge(s) older than ${CHARGE_STALE_DAYS} days have not been invoiced.`,
     columns: ['Description', 'Amount', 'Coworker', 'Type', 'Business', 'Sale Date', 'Days Old', 'Fix'],
     row: (i) => [escPipe(i.description), i.amount, escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.business), i.saleDate, i.daysOld, `\`${i.fix}\``],
@@ -489,8 +489,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'overpaidInvoices', num: 24, severity: 'MEDIUM',
-    name: 'Overpaid invoices (credit available)',
-    heading: 'Overpaid Invoices: Credit Available',
+    name: 'Overpaid invoices with credit to give back',
+    heading: "Overpaid invoices — there's credit to give back",
     description: (n) => `${n} invoice(s) have been overpaid. Credit may be available for the Coworker.`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Total', 'Paid', 'Overpayment', 'Fix'],
     row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.total), escPipe(i.paid), escPipe(i.overpayment), `\`${i.fix}\``],
@@ -498,8 +498,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'staleOperators', num: 25, severity: 'MEDIUM',
-    name: `Stale operator accounts (no login ${STALE_OPERATOR_DAYS}+ days)`,
-    heading: `Stale Operator Accounts (No Login ${STALE_OPERATOR_DAYS}+ Days)`,
+    name: `Admin logins gone quiet for ${STALE_OPERATOR_DAYS}+ days`,
+    heading: `Admin accounts with no login in ${STALE_OPERATOR_DAYS}+ days`,
     description: (n) => `${n} active admin account(s) haven't logged in for ${STALE_OPERATOR_DAYS}+ days. Review and deactivate.`,
     columns: ['Operator', 'Email', 'Last Access', 'Days Stale', 'Fix'],
     row: (i) => [escPipe(i.operator), escPipe(i.email), i.lastAccess, i.daysStale, `\`${i.fix}\``],
@@ -507,8 +507,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'helpDeskDeptsNoManagers', num: 26, severity: 'MEDIUM',
-    name: 'Active help-desk departments with no managers',
-    heading: 'Active Help-Desk Departments with No Managers Assigned',
+    name: 'Help-desk departments with no manager',
+    heading: 'Active help-desk departments with nobody managing them',
     description: (n) => `${n} active help-desk department(s) have no managers. Incoming tickets fall through.`,
     columns: ['Business', 'Department', 'Created On', 'Fix'],
     row: (i) => [escPipe(i.business), escPipe(i.department), i.createdOn, `\`${i.fix}\``],
@@ -516,8 +516,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'unassignedHelpDeskTickets', num: 27, severity: 'MEDIUM',
-    name: `Open help-desk tickets unassigned (${UNASSIGNED_TICKET_DAYS}+ days)`,
-    heading: `Open Help-Desk Tickets Unassigned for ${UNASSIGNED_TICKET_DAYS}+ Days`,
+    name: `Help-desk tickets left unassigned (${UNASSIGNED_TICKET_DAYS}+ days)`,
+    heading: `Open help-desk tickets with no owner for ${UNASSIGNED_TICKET_DAYS}+ days`,
     description: (n) => `${n} open help-desk ticket(s) have no owner and are older than ${UNASSIGNED_TICKET_DAYS} days.`,
     columns: ['Business', 'Subject', 'Coworker', 'Created On', 'Days Open', 'Fix'],
     row: (i) => [escPipe(i.business), escPipe(i.subject), escPipe(i.coworker), i.createdOn, i.daysOpen, `\`${i.fix}\``],
@@ -525,8 +525,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'creditsSetup', num: 28, severity: 'MEDIUM',
-    name: 'Misconfigured plan/product booking credits',
-    heading: 'Plan/Product Credits That Can Never Be Spent',
+    name: "Plan or product credits that can't be used",
+    heading: 'Plan and product credits members can never spend',
     description: (n) => `${n} booking credit(s) release to members but grant nothing or cannot be used for bookings, events, or products.`,
     columns: ['Credit', 'Type', 'Plan/Product', 'Business', 'Problem', 'Fix'],
     row: (i) => [escPipe(i.name), i.type, escPipe(i.owner), escPipe(i.business), escPipe(i.problem), `\`${i.fix}\``],
@@ -535,8 +535,8 @@ const CHECK_DEFS = [
   // --- LOW ---
   {
     key: 'partialPayments', num: 29, severity: 'LOW',
-    name: 'Invoices with partial payment',
-    heading: 'Invoices with Partial Payment (Stuck)',
+    name: 'Invoices only partly paid',
+    heading: 'Invoices that were only partly paid',
     description: (n) => `${n} invoice(s) have partial payment but are not marked as paid.`,
     columns: ['Invoice #', 'Coworker', 'Total', 'Paid', 'Remaining', 'Fix'],
     row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), escPipe(i.total), escPipe(i.paid), escPipe(i.remaining), `\`${i.fix}\``],
@@ -544,8 +544,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'invalidDiscountDates', num: 30, severity: 'LOW',
-    name: 'Discount codes with impossible date range',
-    heading: 'Discount Codes with ValidFrom After ValidTo',
+    name: 'Discount codes that start after they end',
+    heading: 'Discount codes with a start date after their end date',
     description: (n) => `${n} discount code(s) have an impossible date range (start after end).`,
     columns: ['Code', 'Description', 'Valid From', 'Valid To', 'Fix'],
     row: (i) => [escPipe(i.code), escPipe(i.description), i.validFrom, i.validTo, `\`${i.fix}\``],
@@ -553,8 +553,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'resourcesNoPricing', num: 31, severity: 'LOW',
-    name: 'Resources with no booking rate',
-    heading: 'Resources with No Booking Rate Configured',
+    name: 'Bookable resources with no rate',
+    heading: 'Bookable resources that have no booking rate set',
     description: (n) => `${n} non-archived resource(s) have no booking rate. They may be free for everyone.`,
     columns: ['Resource', 'Business', 'Type', 'Fix'],
     row: (i) => [escPipe(i.name), escPipe(i.business), escPipe(i.type), `\`${i.fix}\``],
@@ -563,8 +563,8 @@ const CHECK_DEFS = [
   // --- INSIGHT ---
   {
     key: 'duplicateEmails', num: 32, severity: 'INSIGHT', section: 'insights',
-    name: 'Duplicate Coworker emails',
-    heading: 'Duplicate Coworker Emails',
+    name: 'Same email on more than one account',
+    heading: 'The same email address on more than one account',
     description: (n) => `${n} email address(es) are shared by multiple Coworker accounts (Members and/or Contacts).`,
     columns: ['Email', 'Count', 'Coworkers'],
     row: (i) => [escPipe(i.email), i.count, escPipe(i.names)],
@@ -572,8 +572,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'priceOverrides', num: 33, severity: 'INSIGHT', section: 'insights',
-    name: 'Contract price is different from plan price',
-    heading: 'Contracts Where Price Differs from Plan',
+    name: "Contract price doesn't match the plan",
+    heading: 'Contracts priced differently from their plan',
     description: (n) => `${n} contract(s) have a price that differs from their plan's current price (often legitimate, e.g. $0 plans where price is set per-contract).`,
     columns: ['Member', 'Tariff', 'Contract Price', 'Plan Price', 'Diff', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.tariff), i.contractPrice, i.tariffPrice, i.diff, `\`${i.fix}\``],
@@ -581,8 +581,8 @@ const CHECK_DEFS = [
   },
   {
     key: 'duplicateContracts', num: 34, severity: 'INSIGHT', section: 'insights',
-    name: 'Duplicate contracts (same Member, same plan)',
-    heading: 'Duplicate Contracts: Same Member on Same Plan',
+    name: 'Same member on the same plan twice',
+    heading: 'Possible duplicate contracts — same member, same plan',
     description: (n) => `${n} contract(s) are duplicates: same Member on the same plan more than once.`,
     columns: ['Member', 'Tariff', 'Start Date', 'Duplicates', 'Fix'],
     row: (i) => [escPipe(i.member), escPipe(i.tariff), i.startDate, i.count, `\`${i.fix}\``],
