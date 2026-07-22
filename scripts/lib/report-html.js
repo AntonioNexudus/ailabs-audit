@@ -15,17 +15,21 @@ const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, SEVERITY_COLORS, baseCss, 
 // the two never drift.
 const sevClass = (sev) => `sev-${String(sev).toLowerCase()}`;
 
+// Human-friendly badge labels, matching the onboarding report (title case
+// reads warmer than shouting caps).
+const SEVERITY_LABEL = { HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low', INSIGHT: 'Insight' };
+
 // Severity-family CSS (badges, pills, finding cards) generated from
 // SEVERITY_COLORS so a palette change in brand.js restyles everything.
+// Card titles/numbers stay navy/grey (see reportCss) like the onboarding
+// report's check cards; the family only tints backgrounds and borders.
 function severityFamilyCss() {
   return Object.entries(SEVERITY_COLORS).map(([sev, c]) => {
     const k = sevClass(sev);
     return `
 .badge.${k} { background: ${c.badge}; }
 .pill.${k} { background: ${c.badge}; }
-details.finding.${k} { background: ${c.bg}; border-color: ${c.border}; }
-details.finding.${k} .finding-title { color: ${c.text}; }
-details.finding.${k} .finding-num { color: ${c.text}; opacity: 0.65; }`;
+details.finding.${k} { background: ${c.bg}; border-color: ${c.border}; }`;
   }).join('\n');
 }
 
@@ -51,9 +55,11 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
     if (typeof m.get === 'function') return m.get(String(id)) || '';
     return m[String(id)] || '';
   };
+  // Escape the id too: bizScope/footerScope land in the page unescaped, so
+  // every character of them must already be safe.
   const formatBusiness = (id) => {
     const name = businessNameFor(id);
-    return name ? `${id} (${escHtml(name)})` : String(id);
+    return name ? `${escHtml(String(id))} (${escHtml(name)})` : escHtml(String(id));
   };
   const bizScope = scopeMeta && scopeMeta.businesses && scopeMeta.businesses.length > 0
     ? scopeMeta.businesses.map(formatBusiness).join(', ')
@@ -83,7 +89,7 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
 
   // ---------- helpers (local scope) ----------
   const severityBadge = (sev) =>
-    `<span class="badge ${sevClass(SEVERITY_COLORS[sev] ? sev : 'INSIGHT')}">${escHtml(sev)}</span>`;
+    `<span class="badge ${sevClass(SEVERITY_COLORS[sev] ? sev : 'INSIGHT')}">${escHtml(SEVERITY_LABEL[sev] || sev)}</span>`;
 
   // Count pill: severity-coloured when > 0, green when 0, grey for —/ERROR.
   const countPill = (count, sev) => {
@@ -128,7 +134,7 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
   // ---------- exec-summary table ----------
   const summaryRows = defsForReport.map((def) => {
     const r = results[def.key];
-    const count = !r ? '—' : r.status === 'ERROR' ? 'ERROR' : r.items.length;
+    const count = !r ? '—' : r.status === 'ERROR' ? 'Error' : r.items.length;
     const sev = def.section === 'insights' ? 'INSIGHT' : def.severity;
     const anchor = `check-${def.num}`;
     const hasIssues = typeof count === 'number' && count > 0;
@@ -161,7 +167,7 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
           ${severityBadge(sev)}
           <span class="finding-num">#${def.num}</span>
           <h2 class="finding-title">${escHtml(def.heading)}</h2>
-          <span class="pill pill-na">ERROR</span>
+          <span class="pill pill-na">Error</span>
           <span class="section-chevron">›</span>
         </summary>
         <div class="finding-body">
@@ -225,19 +231,21 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
     : '';
 
   // ---------- score bar ----------
-  // Hero orange is reserved for the headline stat, so Medium uses the
-  // brand's mid orange. Insights appear only when insight checks ran.
-  const scoreItem = (value, label, color) =>
-    `<div class="score-item"><strong${color ? ` style="color:${color}"` : ''}>${escHtml(String(value))}</strong>${escHtml(label)}</div>`;
+  // Class-based stat colours matching the onboarding report's score bar:
+  // hero orange for the headline stat (shared by Medium, as onboarding shares
+  // it with Warnings), dark pink for High, navy default for checks run.
+  // Insights appear only when insight checks ran.
+  const scoreItem = (value, label, cls) =>
+    `<div class="score-item"><strong${cls ? ` class="${cls}"` : ''}>${escHtml(String(value))}</strong>${escHtml(label)}</div>`;
   const scoreDivider = '<div class="score-divider"></div>';
   const scoreItems = [
-    scoreItem(totalIssues, 'Total issues', C.orange),
-    scoreItem(sevCounts.HIGH, 'High', C.pink),
-    scoreItem(sevCounts.MEDIUM, 'Medium', C.orange_medium),
-    scoreItem(sevCounts.LOW, 'Low', C.blue),
+    scoreItem(totalIssues, 'Total issues', 'orange'),
+    scoreItem(sevCounts.HIGH, 'High', 'score-pink'),
+    scoreItem(sevCounts.MEDIUM, 'Medium', 'orange'),
+    scoreItem(sevCounts.LOW, 'Low', 'score-blue'),
   ];
-  if (insightDefs.length > 0) scoreItems.push(scoreItem(insightCount, 'Insights', C.grey_medium));
-  scoreItems.push(scoreItem(`${checksRanCount} of ${CHECK_DEFS.length}`, 'Checks run', C.navy));
+  if (insightDefs.length > 0) scoreItems.push(scoreItem(insightCount, 'Insights', 'score-grey'));
+  scoreItems.push(scoreItem(`${checksRanCount} of ${CHECK_DEFS.length}`, 'Checks run'));
   const scoreBar = scoreItems.join(scoreDivider);
 
   // ---------- assemble document ----------
@@ -263,6 +271,16 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
 ${severityFamilyCss()}
 
 .pill.pill-na { background: ${C.grey_medium}; }
+
+/* Badges read as title case here (High/Medium/Low/Insight) to match the
+   onboarding report, so undo the shared shell's uppercasing and tighten the
+   wide tracking it pairs with. */
+.badge { text-transform: none; letter-spacing: 0.02em; }
+
+/* Score-bar stat colours — same treatment as the onboarding report. */
+.score-item strong.score-pink { color: ${C.pink_dark}; }
+.score-item strong.score-blue { color: ${C.blue}; }
+.score-item strong.score-grey { color: ${C.grey_medium}; }
 
 /* ── Scope strip ── */
 .scope {
@@ -318,10 +336,13 @@ details.finding > summary::-webkit-details-marker { display: none; }
   user-select: none;
 }
 details.finding[open] > summary .section-chevron { transform: rotate(90deg); }
+/* Navy titles + grey numbers on every card, like the onboarding report's
+   check cards — the tinted card and badge already carry the severity. */
 .finding-num {
   font-family: ${FONT_DISPLAY};
   font-weight: 600;
   font-size: 13px;
+  color: ${C.grey_medium};
 }
 .finding-title {
   font-family: ${FONT_DISPLAY};
@@ -329,6 +350,7 @@ details.finding[open] > summary .section-chevron { transform: rotate(90deg); }
   font-weight: 600;
   flex: 1;
   line-height: 1.3;
+  color: ${C.navy};
 }
 .finding-body { padding: 0 16px 14px; }
 .finding-desc {

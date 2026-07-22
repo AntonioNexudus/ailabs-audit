@@ -90,6 +90,22 @@ CLI flags:
 
 If `--business-ids` and (`--level` or `--checks`) are both present → non-interactive. If either missing AND stdin is a TTY → prompt. If either missing AND non-TTY → exit 2 with usage hint.
 
+## Dashboard (local web UI)
+
+For operators who would rather not use a terminal, there is a point-and-click **local web dashboard** that drives both audits. It is a small, zero-dependency Node server (built-ins only — same "no `npm install`" promise as the rest of the repo) and is fully additive: it never touches the audit scripts or `scripts/lib/*`, and deleting its four files reverts it completely.
+
+**Launch it:** double-click **`Run Audit Dashboard.cmd`** in the repo root (or run `node scripts/ui.js`). It starts on `http://127.0.0.1:4680/` (loopback only — reports contain PII, and this also avoids Windows firewall prompts), opens your browser automatically, and prints the URL. Keep the console window open while you use it; close it (or Ctrl+C) to stop. Launching it again while it is already running just re-opens the existing tab.
+
+**What you get** (one branded page, styled from `brand.js` so it matches the reports):
+- a **setup strip** showing whether the Nexudus CLI is installed, signed in, and whether PII is unlocked, with a **Re-check** button;
+- a **Run an audit** card — choose Account Health or Onboarding Check-in, pick businesses (search + an "All businesses" toggle that works before the list finishes loading), pick a depth tier (Quick/Medium/Thorough) or a **Custom** subset of checks (account audit only), optionally enable the 1-hour data cache, and Run;
+- a **live progress** card — per-check pass/warn/fail results as they happen, a raw-log **Details** toggle, a **Cancel** button, and on finish a summary with **Open report** and **Show folder**;
+- a **Past reports** list read from the Desktop *Nexudus Audit Reports* folder (Open the `.html`, or the `.md` for account audits).
+
+It runs each audit exactly as the CLI does — by spawning `node audit.js` / `node onboarding-audit.js` as a child process with explicit flags — so it honours the same single-run lock, exit codes, and report output. Only one audit runs at a time.
+
+**Files:** `scripts/ui.js` (server), `scripts/lib/ui-page.js` (the HTML shell), `scripts/lib/ui-client.js` (browser JS), and `Run Audit Dashboard.cmd` (launcher).
+
 ## Tier Model (data-fetch-driven)
 
 Tiers are sized by **which entities each check needs to fetch**, not just severity. At 5,000+ Coworkers the heavy fetches dominate runtime, so a Quick run can complete fast by avoiding Coworker / contract / invoice / booking pulls entirely.

@@ -150,9 +150,11 @@ function buildOnboardingReport(sections, scopeMeta) {
     if (typeof m.get === 'function') return m.get(String(id)) || '';
     return m[String(id)] || '';
   };
+  // Escape the id too: bizScope/footerScope land in the page unescaped, so
+  // every character of them must already be safe.
   const formatBusiness = (id) => {
     const name = businessNameFor(id);
-    return name ? `${id} (${escHtml(name)})` : String(id);
+    return name ? `${escHtml(String(id))} (${escHtml(name)})` : escHtml(String(id));
   };
   const bizScope = scopeMeta && scopeMeta.businesses && scopeMeta.businesses.length > 0
     ? scopeMeta.businesses.map(formatBusiness).join(', ')
