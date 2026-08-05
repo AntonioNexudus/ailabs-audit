@@ -22,6 +22,7 @@
     es: null,                   // EventSource for the active run
     run: null,                  // latest run snapshot
     sevByNum: {},               // account: check num -> severity
+    piiUnlocked: false,         // CLI PII state; pessimistic (locked = slow) until /api/setup answers
     lastActivityAt: 0,          // ms of the last stream event (quiet-period detection)
     ticker: null,               // 1s interval while a run is live
   };
@@ -113,7 +114,12 @@
     clear(wrap);
     wrap.appendChild(el('span', { class: 'setup-pill', html: '<span class="dot"></span>Checking setup…' }));
     api('/api/setup' + (refresh ? '?refresh=1' : '')).then(function (r) {
-      renderSetup(r.body);
+      var s = r.body;
+      // {busy:true} (probe skipped mid-run, no cache) carries no piiUnlocked —
+      // keep the last-known value. getSetup's mid-run cached path DOES include it.
+      if (s && typeof s.piiUnlocked !== 'undefined') S.piiUnlocked = !!s.piiUnlocked;
+      renderSetup(s);
+      renderDepth();  // card estimates depend on PII state
     });
   }
 
@@ -126,6 +132,10 @@
     return Object.keys(S.bizSelected).join(',');
   }
 
+  // Rebuilds the business picker from S plus the live search box. Full redraw
+  // rather than patching rows: the list is short and every toggle can change
+  // the master row's meaning (checking "All businesses" clears and disables the
+  // individual rows), so re-rendering is simpler than reconciling.
   function renderBiz() {
     var list = $('#biz-list');
     clear(list);
@@ -176,6 +186,11 @@
     });
   }
 
+  // Fetches the business list. The server refuses to run CLI probes while an
+  // audit is active (parallel redacted calls crash the CLI) and answers
+  // {busy:true} instead, so this self-reschedules every 4s until the run ends
+  // rather than leaving an empty picker behind. Any other failure resolves to
+  // an empty list so the "All businesses" path still works.
   function loadBusinesses(refresh) {
     S.bizLoaded = false;
     renderBiz();
@@ -199,21 +214,34 @@
   var SEV_ORDER = ['HIGH', 'MEDIUM', 'LOW', 'INSIGHT'];
   var SEV_LABEL = { HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low', INSIGHT: 'Insight' };
 
+  // Paints the depth-tier cards (plus the Custom card) and the active-selection
+  // highlight. Re-run on every state change that can alter a card: type toggle,
+  // tier click, and each /api/setup answer — the per-tier time estimate has a
+  // locked and an unlocked variant (locked runs are minutes, not seconds) and
+  // S.piiUnlocked starts pessimistic, so the first setup answer may flip all
+  // three. Early-returns until /api/meta lands; whichever of meta/setup arrives
+  // second re-renders with both in hand.
   function renderDepth() {
     show($('#depth-field'), S.type === 'account');
     if (S.type !== 'account' || !S.meta) return;
     var grid = $('#tier-grid');
     clear(grid);
     var counts = S.meta.account.tierCounts || {};
+    var estimates = S.meta.account.tierEstimates || {};
+    var piiKey = S.piiUnlocked ? 'unlocked' : 'locked';
     var tiers = [
-      { key: 'quick', name: 'Quick', desc: 'light data · ~10s' },
-      { key: 'medium', name: 'Medium', desc: 'adds members & contracts · ~45s' },
-      { key: 'thorough', name: 'Thorough', desc: 'full data · ~90s' },
+      { key: 'quick', name: 'Quick', desc: 'light data' },
+      { key: 'medium', name: 'Medium', desc: 'adds members & contracts' },
+      { key: 'thorough', name: 'Thorough', desc: 'full data' },
     ];
     tiers.forEach(function (t) {
+      // Omit the time suffix rather than print a blank one if meta predates
+      // tierEstimates (e.g. a stale page held open across a server upgrade).
+      var time = estimates[t.key] ? estimates[t.key][piiKey] : null;
+      var desc = t.desc + (time ? ' · ' + time : '');
       var card = el('div', { class: 'tier-card' + (!S.useCustom && S.level === t.key ? ' active' : '') }, [
         el('div', { class: 'tier-name', text: t.name }),
-        el('div', { class: 'tier-meta', text: (counts[t.key] != null ? counts[t.key] + ' checks · ' : '') + t.desc }),
+        el('div', { class: 'tier-meta', text: (counts[t.key] != null ? counts[t.key] + ' checks · ' : '') + desc }),
       ]);
       card.addEventListener('click', function () {
         S.useCustom = false; S.level = t.key;
@@ -235,6 +263,10 @@
     grid.appendChild(custom);
   }
 
+  // Builds the Custom tier's per-check picker, grouped by severity in
+  // SEV_ORDER so the highest-impact checks are the ones the operator reads
+  // first. Selection lives in S.customChecks (num -> true) and is preserved
+  // across re-renders; the run button stays disabled while it is empty.
   function renderCustomChecks() {
     var box = $('#custom-checks');
     clear(box);
@@ -277,8 +309,12 @@
   }
 
   // ---- Progress rendering --------------------------------------------------
+  // Returns {cls, label} for a per-check result pill. The two audits grade
+  // differently: onboarding reports pass/warn/fail/skip per check, while the
+  // account audit reports a count and takes its colour from the check's own
+  // severity (S.sevByNum, populated from /api/meta) — a HIGH check with issues
+  // must not look like a LOW one. Anything unrecognised falls through to Pass.
   function pillFor(check) {
-    // Returns {cls, label} for a per-check result pill.
     var st = check.status;
     if (st === 'error') return { cls: 'st-error', label: 'Error' };
     if (S.type === 'onboarding') {
@@ -296,6 +332,9 @@
     return { cls: 'sev-pass', label: 'Pass' };
   }
 
+  // Replace-or-append by check index: the same check can arrive twice (a live
+  // 'check' event, then again inside a reconnect snapshot), so keying the row
+  // on its index and swapping it in place keeps the list from doubling up.
   function renderCheckItem(check) {
     var list = $('#check-list');
     var id = 'chk-' + check.index;
@@ -310,6 +349,9 @@
     else list.appendChild(node);
   }
 
+  // "M:SS" since the run started, from the server's startedAt. Clamped at 0
+  // because that timestamp is the server's clock and the browser's may be a
+  // little behind it, which would otherwise render a negative clock.
   function elapsedStr() {
     if (!S.run || !S.run.startedAt) return '';
     var s = Math.floor((Date.now() - S.run.startedAt) / 1000);
@@ -317,6 +359,10 @@
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
 
+  // Repaints the counter and the bar. `total` is unknown until the first check
+  // line is parsed (the audit prints "[i/N]" only once it starts checking), so
+  // until then we show a bare done-count and a zero-width bar rather than
+  // guessing a denominator.
   function updateProgressBar() {
     var run = S.run;
     if (!run) return;
@@ -431,6 +477,11 @@
   }
 
   // ---- Run lifecycle -------------------------------------------------------
+  // POSTs the run request. The server answers 202 + {runId} on success (we
+  // don't keep the id — the SSE stream is the only thing we need from here),
+  // 409 when a run is already going, and 400 with an {error} message when the
+  // body fails validation. Everything but 202 leaves the form usable and puts
+  // the reason in #run-error, so a rejected start is never a dead button.
   function startRun() {
     var body = { type: S.type, businessIds: bizScopeString(), cache: S.cache };
     if (S.type === 'account') {
@@ -465,6 +516,13 @@
     });
   }
 
+  // Opens the run stream. Six events; their payloads are documented in the SSE
+  // contract block in ui.js next to broadcast(). Lifecycle: at most one
+  // EventSource at a time (any existing one is closed first), the browser
+  // auto-reconnects if the socket drops, and the server replays a `snapshot` on
+  // every connect — so a reconnect resyncs the whole card and we never need to
+  // buffer or replay events ourselves. `done` closes the stream deliberately:
+  // the run is over, there is nothing left to receive.
   function connectStream() {
     if (S.es) { S.es.close(); S.es = null; }
     var es = new EventSource('/api/run/events');
@@ -515,10 +573,11 @@
       loadReports();
       loadSetup(false);
     });
-    es.onerror = function () {
-      // Browser will auto-reconnect; the server re-sends a snapshot on connect.
-      // If the run already finished we've closed es above, so nothing to do.
-    };
+    // Deliberately a no-op. A transport blip is not a run failure: the browser
+    // reconnects by itself and the snapshot-on-connect repaints everything, so
+    // surfacing an error here would just flash a scary message mid-run. If the
+    // run already finished, the 'done' handler closed es and this never fires.
+    es.onerror = function () {};
   }
 
   function cancelRun() {
@@ -540,10 +599,6 @@
         var actions = el('span', { class: 'rr-actions' }, [
           el('a', { class: 'report-link', href: '/report/' + encodeURIComponent(rep.name), target: '_blank', rel: 'noopener', text: 'Open' }),
         ]);
-        if (rep.hasMd) {
-          var mdName = rep.name.replace(/\.html$/, '.md');
-          actions.appendChild(el('a', { class: 'report-link', href: '/report/' + encodeURIComponent(mdName), target: '_blank', rel: 'noopener', text: '.md' }));
-        }
         box.appendChild(el('div', { class: 'report-row' }, [
           el('span', { class: 'rr-type ' + rep.type, text: rep.type === 'onboarding' ? 'Onboarding' : 'Account' }),
           el('span', { class: 'rr-when', text: fmtStamp(rep.stamp, rep.mtime) }),

@@ -302,6 +302,48 @@ function getResourceAccessRuleMap() {
 }
 
 // ---------------------------------------------------------------------------
+// Additional getters — added for onboarding checks #31 (member-portal content
+// readiness: events, FAQs, articles, community groups) and #32 (floor plan &
+// desk mapping). Same shared-cache/business-scoping pattern as the blocks
+// above: fetched account-wide and scoped in memory with filterByBusiness()
+// rather than modifying nexudus-cli's shared BUSINESS_FLAG map, per the
+// precedent set by every getter added since getResources(). calendarevents,
+// faqarticles, blogposts, communitygroups and floorplans all carry BusinessId;
+// floorplandesks carry FloorPlanBusinessId, which inSelectedBusiness() already
+// understands (see the floor-plan branch at the top of this file).
+// ---------------------------------------------------------------------------
+
+function getCalendarEvents() {
+  if (!cache.calendarEvents) cache.calendarEvents = filterByBusiness(fetchAllPagesCached('calendarEvents', ['calendarevents', 'list']));
+  return cache.calendarEvents;
+}
+
+function getFaqArticles() {
+  if (!cache.faqArticles) cache.faqArticles = filterByBusiness(fetchAllPagesCached('faqArticles', ['faqarticles', 'list']));
+  return cache.faqArticles;
+}
+
+function getBlogPosts() {
+  if (!cache.blogPosts) cache.blogPosts = filterByBusiness(fetchAllPagesCached('blogPosts', ['blogposts', 'list']));
+  return cache.blogPosts;
+}
+
+function getCommunityGroups() {
+  if (!cache.communityGroups) cache.communityGroups = filterByBusiness(fetchAllPagesCached('communityGroups', ['communitygroups', 'list']));
+  return cache.communityGroups;
+}
+
+function getFloorPlans() {
+  if (!cache.floorPlans) cache.floorPlans = filterByBusiness(fetchAllPagesCached('floorPlans', ['floorplans', 'list']));
+  return cache.floorPlans;
+}
+
+function getFloorPlanDesks() {
+  if (!cache.floorPlanDesks) cache.floorPlanDesks = filterByBusiness(fetchAllPagesCached('floorPlanDesks', ['floorplandesks', 'list']));
+  return cache.floorPlanDesks;
+}
+
+// ---------------------------------------------------------------------------
 // Parallel prefetch. Builds the list of entities the selected checks actually
 // need, fetches them in one upfront pass, and populates the in-memory cache so
 // each getX() returns immediately. The lazy getX path is still available
@@ -420,14 +462,17 @@ module.exports = {
   getContracts, getInvoices,
   getCoworkersAll, getCoworkersActive, getCoworkersInactive, getCoworkersArchived,
   getProducts, getTariffs, getPaymentMethods, getDiscountCodes,
-  getBusinessesAll, fetchAccessibleBusinessIds, getBusinesses,
+  fetchAccessibleBusinessIds, getBusinesses,
   getTeamsList, getTariffCredits, getProductCredits,
-  ENTITY_SPECS, prefetchAll,
-  getContractsByCoworker, classifyCoworkerById, computeCoworkerStats,
+  prefetchAll,
+  classifyCoworkerById, computeCoworkerStats,
   // Onboarding check-in audit getters (scripts/onboarding-audit.js)
   getResources, getExtraServices, getTaxRates, getPaymentGateways,
   // Onboarding checks #23-30 getters
   getEventAttendees, getTimepasses, getWebhooks, getValidationRules,
   getCustomFields, getContractContacts, getCoworkerIdentityChecks,
   getResourceAccessRules, getResourceAccessRuleMap,
+  // Onboarding checks #31-32 getters
+  getCalendarEvents, getFaqArticles, getBlogPosts, getCommunityGroups,
+  getFloorPlans, getFloorPlanDesks,
 };

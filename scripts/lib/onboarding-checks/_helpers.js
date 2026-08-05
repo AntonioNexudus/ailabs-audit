@@ -4,8 +4,6 @@
 // onboarding checks read the same way as their reference heuristics.
 
 const { safeId, escPipe } = require('../util');
-const { fetchAllPages } = require('../nexudus-cli');
-const log = require('../log');
 
 // Joins up to `limit` item names with ", " and an "and N more" suffix.
 function names(items, key = 'Name', limit = 3) {
@@ -30,24 +28,6 @@ function fields(pairs) {
   return pairs.map(([label, value]) => `${label}: ${value == null || value === '' ? '—' : value}`).join('\n');
 }
 
-// Fetch a per-business list, tolerating a failure on any single business (the
-// same defensive pattern helpDeskDeptsNoManagers.js / unassignedHelpDeskTickets.js
-// use in the account-health audit) so one broken business doesn't fail the
-// whole check.
-function fetchPerBusiness(businesses, argsFor, onError) {
-  const out = [];
-  for (const biz of businesses) {
-    try {
-      const items = fetchAllPages(argsFor(biz));
-      for (const item of items) out.push({ biz, item });
-    } catch (err) {
-      if (typeof onError === 'function') onError(biz, err);
-      else log.warn(`  [warn] skipping business ${biz.Id} (${biz.Name}): ${err.message}`);
-    }
-  }
-  return out;
-}
-
 // Builds the "N booking-policy rule(s) could not be verified" note shared by
 // resourcesNoBookingPolicy.js (#29) and resourcesBookingPolicyIncomplete.js
 // (#30) — both consume data.js's getResourceAccessRuleMap(), whose
@@ -59,4 +39,4 @@ function fetchFailedCaveat(fetchFailedRuleIds, suffix) {
   return `Note: ${n} booking-policy rule${n !== 1 ? 's' : ''} could not be verified (fetch failed)${suffix ? `, ${suffix}` : ''}.`;
 }
 
-module.exports = { names, table, fields, fetchPerBusiness, fetchFailedCaveat, safeId };
+module.exports = { names, table, fields, fetchFailedCaveat, safeId };

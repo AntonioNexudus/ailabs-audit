@@ -2,11 +2,11 @@
 // definitions (heading, columns, row renderer, fn) and the HTML remediation
 // copy. Pulls each check function in from ./checks/<key>.js.
 
-const { escPipe } = require('./util');
 const { classifyCoworkerById } = require('./data');
 const {
   DRAFT_STALE_DAYS, BOOKING_STALE_DAYS, CHECKIN_STALE_HOURS, CHARGE_STALE_DAYS,
   CONTRACT_LIMIT_WARNING, CONTRACT_LIMIT_MAX, STALE_OPERATOR_DAYS, UNASSIGNED_TICKET_DAYS,
+  PROPOSAL_STALE_DAYS, DELIVERY_STALE_DAYS,
 } = require('./config');
 
 const checkDesksOnCancelledContracts = require('./checks/desks');
@@ -43,6 +43,8 @@ const checkResourcesNoPricing = require('./checks/resourcesNoPricing');
 const checkDuplicateEmails = require('./checks/duplicateEmails');
 const checkContractPriceOverrides = require('./checks/priceOverrides');
 const checkDuplicateContracts = require('./checks/duplicateContracts');
+const checkStaleProposals = require('./checks/staleProposals');
+const checkUncollectedDeliveries = require('./checks/uncollectedDeliveries');
 
 // ---------------------------------------------------------------------------
 // Tier registry — which audit depth(s) include each check, by check number.
@@ -85,9 +87,22 @@ const CHECK_TIERS = {
   32: ['M', 'T'],         // duplicateEmails (INSIGHT)
   33: ['M', 'T'],         // priceOverrides (INSIGHT)
   34: ['M', 'T'],         // duplicateContracts (INSIGHT)
+  35: ['M', 'T'],         // staleProposals
+  36: ['M', 'T'],         // uncollectedDeliveries
 };
 
-const TIER_LABEL = { Q: 'quick', M: 'medium', T: 'thorough' };
+// Rough wall-clock estimates per depth tier, keyed by the CLI's PII state.
+// locked (PII redaction ON, the default) = CLI calls run strictly one at a
+// time (MAX_CONCURRENT_CLI_REDACTED = 1 in config.js) and every record is
+// tokenized, so deep tiers take minutes, not seconds. unlocked = 4 parallel
+// clear fetches. Edit the strings here to retune every surface at once
+// (dashboard depth cards via /api/meta, and audit.js's CLI depth table).
+const TIER_TIME_ESTIMATES = {
+  quick:    { unlocked: '~10s', locked: '~30s' },
+  medium:   { unlocked: '~45s', locked: '10+ min' },
+  thorough: { unlocked: '~90s', locked: '15+ min' },
+};
+
 const LEVEL_TO_LETTER = { quick: 'Q', medium: 'M', thorough: 'T', q: 'Q', m: 'M', t: 'T' };
 
 // Which prefetchable entities each check needs. Inline fetches inside checks
@@ -128,6 +143,8 @@ const CHECK_DEPS = {
   32: ['coworkersAll'],
   33: ['contracts', 'tariffs'],
   34: ['contracts'],
+  35: [],
+  36: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -275,8 +292,24 @@ const REMEDIATIONS = {
     steps: 'Open Finance > Contracts and review each flagged contract\'s Price schedule section against its plan\'s standard price. Confirm whether the difference is intentional (negotiated rate, $0 plan with per-contract pricing). If unintended, open the contract, edit the Price schedule section, and update or remove the custom schedule to align with the plan price.',
     helpUrl: 'https://help.nexudus.com/docs/adding-price-schedules',
   },
+  staleProposals: {
+    steps: 'Open CRM > Proposals and review each proposal that is still sitting in "Sent". Chase the customer if the deal is still live — resend it or follow up by phone — and if it has gone cold, open the proposal and mark it as rejected so the pipeline reflects what is really happening. When creating future proposals, set an expiration date so they close themselves instead of lingering indefinitely.',
+    helpUrl: 'https://help.nexudus.com/docs/editing-proposals',
+  },
+  uncollectedDeliveries: {
+    steps: 'Open Operations > Deliveries and review the items that are still waiting. Use the quick-action menu (or Bulk actions) to Send reminder so the member knows the package is here, and mark the item as collected once it has been picked up. For post that has been sitting for months, apply your storage policy instead — forward it, return it to sender, or recycle/shred it — so the delivery log stops growing.',
+    helpUrl: 'https://help.nexudus.com/docs/sending-delivery-collection-reminders',
+  },
 };
 
+// Check-author contract. Every `fn` returns { status, items }: status is
+// 'ISSUES' or 'PASS', items is the array of findings ([] on PASS). Item shape
+// is per-check and private to the pair below it — the `row:` arrow is the only
+// consumer, and it reads the item's keys positionally into the `columns:`
+// array, so columns.length must equal the row array's length and the two must
+// stay in the same order. Anything thrown propagates: audit.js catches it,
+// records { status: 'ERROR', items: [] } and keeps going, so a check may throw
+// rather than invent a passing result when its data is unusable.
 const CHECK_DEFS = [
   // --- HIGH ---
   {
@@ -285,7 +318,7 @@ const CHECK_DEFS = [
     heading: 'Desks still assigned to cancelled contracts',
     description: (n) => `${n} desk(s) still assigned to cancelled contracts.`,
     columns: ['Desk', 'Floor Plan', 'Coworker', 'Type', 'Contract ID', 'Cancelled On', 'Fix'],
-    row: (i) => [escPipe(i.deskName), escPipe(i.floorPlan), escPipe(i.member), classifyCoworkerById(i.coworkerId), i.contractId, i.cancelledOn, `\`${i.fix}\``],
+    row: (i) => [i.deskName, i.floorPlan, i.member, classifyCoworkerById(i.coworkerId), i.contractId, i.cancelledOn, `\`${i.fix}\``],
     fn: checkDesksOnCancelledContracts,
   },
   {
@@ -294,7 +327,7 @@ const CHECK_DEFS = [
     heading: 'Overdue invoices that are still unpaid',
     description: (n) => `${n} invoice(s) overdue and unpaid (Coworker may be a Member or a Contact).`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Amount', 'Due Date', 'Days Overdue', 'Fix'],
-    row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.amount), i.dueDate, i.daysOverdue, `\`${i.fix}\``],
+    row: (i) => [i.invoiceNumber, i.member, classifyCoworkerById(i.coworkerId), i.amount, i.dueDate, i.daysOverdue, `\`${i.fix}\``],
     fn: checkOverdueUnpaidInvoices,
   },
   {
@@ -303,7 +336,7 @@ const CHECK_DEFS = [
     heading: 'Inactive members who still have active contracts',
     description: (n) => `${n} inactive Member(s) still have active contracts.`,
     columns: ['Member', 'Email', 'Tariff', 'Contract ID', 'Start Date', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.contractId, i.startDate, `\`${i.fix}\``],
+    row: (i) => [i.member, i.email, i.tariff, i.contractId, i.startDate, `\`${i.fix}\``],
     fn: checkInactiveMembersWithActiveContracts,
   },
   {
@@ -312,7 +345,7 @@ const CHECK_DEFS = [
     heading: 'Active contracts that have fallen behind on billing',
     description: (n) => `${n} active contract(s) have an invoiced period in the past, billing may have stalled.`,
     columns: ['Member', 'Tariff', 'Invoiced Up To', 'Days Behind', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.tariff), i.invoicedPeriod, i.daysBehind, `\`${i.fix}\``],
+    row: (i) => [i.member, i.tariff, i.invoicedPeriod, i.daysBehind, `\`${i.fix}\``],
     fn: checkContractsBillingBehind,
   },
   {
@@ -321,7 +354,7 @@ const CHECK_DEFS = [
     heading: 'Contracts past their cancellation date that never cancelled',
     description: (n) => `${n} contract(s) have a cancellation date in the past but are not yet cancelled.`,
     columns: ['Member', 'Tariff', 'Cancellation Date', 'Days Past', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.tariff), i.cancellationDate, i.daysPast, `\`${i.fix}\``],
+    row: (i) => [i.member, i.tariff, i.cancellationDate, i.daysPast, `\`${i.fix}\``],
     fn: checkContractsStuckCancellation,
   },
   {
@@ -330,7 +363,7 @@ const CHECK_DEFS = [
     heading: 'Invoices over a year overdue — worth writing off',
     description: (n) => `${n} invoice(s) overdue for over a year. Consider voiding or writing off (Coworker may be a Member or a Contact).`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Amount', 'Due Date', 'Days Overdue', 'Fix'],
-    row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.amount), i.dueDate, i.daysOverdue, `\`${i.fix}\``],
+    row: (i) => [i.invoiceNumber, i.member, classifyCoworkerById(i.coworkerId), i.amount, i.dueDate, i.daysOverdue, `\`${i.fix}\``],
     fn: checkInvoicesOverdue12Months,
   },
   {
@@ -339,7 +372,7 @@ const CHECK_DEFS = [
     heading: 'Products out of stock — this can block invoicing',
     description: (n) => `${n} product(s) with stock tracking enabled have zero or negative stock.`,
     columns: ['Product', 'Business', 'Stock', 'Fix'],
-    row: (i) => [escPipe(i.name), escPipe(i.business), i.stock, `\`${i.fix}\``],
+    row: (i) => [i.name, i.business, i.stock, `\`${i.fix}\``],
     fn: checkProductsOutOfStock,
   },
   {
@@ -348,7 +381,7 @@ const CHECK_DEFS = [
     heading: 'Suspended members who still have active contracts',
     description: (n) => `${n} suspended Member(s) still have active contracts. Cancel contracts before or after unsuspending.`,
     columns: ['Member', 'Email', 'Tariff', 'Contract ID', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.contractId, `\`${i.fix}\``],
+    row: (i) => [i.member, i.email, i.tariff, i.contractId, `\`${i.fix}\``],
     fn: checkArchivedMembersWithActiveContracts,
   },
   {
@@ -357,7 +390,7 @@ const CHECK_DEFS = [
     heading: "Contracts that couldn't cancel because the member was suspended",
     description: (n) => `${n} contract(s) couldn't auto-cancel because the member was suspended at cancellation time.`,
     columns: ['Member', 'Email', 'Tariff', 'Cancellation Date', 'Days Past', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.cancellationDate, i.daysPast, `\`${i.fix}\``],
+    row: (i) => [i.member, i.email, i.tariff, i.cancellationDate, i.daysPast, `\`${i.fix}\``],
     fn: checkSuspendedContractsPastCancellation,
   },
   {
@@ -366,7 +399,7 @@ const CHECK_DEFS = [
     heading: 'Refundable deposits still sitting on cancelled contracts',
     description: (n) => `${n} refundable deposit(s) on cancelled contracts may need refund processing (Coworker is typically a Contact now).`,
     columns: ['Product', 'Price', 'Coworker', 'Type', 'Tariff', 'Contract ID', 'Fix'],
-    row: (i) => [escPipe(i.product), i.price, escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.tariff), i.contractId, `\`${i.fix}\``],
+    row: (i) => [i.product, i.price, i.member, classifyCoworkerById(i.coworkerId), i.tariff, i.contractId, `\`${i.fix}\``],
     fn: checkDepositsOnCancelledContracts,
   },
   {
@@ -375,7 +408,7 @@ const CHECK_DEFS = [
     heading: 'Team billing will fail — the paying member has no payment method',
     description: (n) => `${n} team(s) with merged billing have a paying member with no payment method. Entire team billing will fail.`,
     columns: ['Team', 'Paying Member', 'Fix'],
-    row: (i) => [escPipe(i.teamName), escPipe(i.payingMember), `\`${i.fix}\``],
+    row: (i) => [i.teamName, i.payingMember, `\`${i.fix}\``],
     fn: checkTeamPayingMemberNoPayment,
   },
   {
@@ -384,7 +417,7 @@ const CHECK_DEFS = [
     heading: 'Upcoming bookings on resources that have been archived',
     description: (n) => `${n} upcoming booking(s) reference archived resources. Coworkers (Members or Contacts) will be affected.`,
     columns: ['Booking #', 'Resource', 'Coworker', 'Date', 'Fix'],
-    row: (i) => [i.bookingNumber, escPipe(i.resource), escPipe(i.member), i.date, `\`${i.fix}\``],
+    row: (i) => [i.bookingNumber, i.resource, i.member, i.date, `\`${i.fix}\``],
     fn: checkFutureBookingsArchivedResources,
   },
   // --- MEDIUM ---
@@ -394,7 +427,7 @@ const CHECK_DEFS = [
     heading: 'Discount codes that have expired but are still active',
     description: (n) => `${n} discount code(s) expired but still active.`,
     columns: ['Code', 'Description', 'Expired On', 'Days Expired', 'Fix'],
-    row: (i) => [escPipe(i.code), escPipe(i.description), i.validTo, i.daysExpired, `\`${i.fix}\``],
+    row: (i) => [i.code, i.description, i.validTo, i.daysExpired, `\`${i.fix}\``],
     fn: checkExpiredActiveDiscountCodes,
   },
   {
@@ -403,7 +436,7 @@ const CHECK_DEFS = [
     heading: 'Draft invoices left unsent for more than a week',
     description: (n) => `${n} draft invoice(s) older than ${DRAFT_STALE_DAYS} days.`,
     columns: ['Invoice #', 'Coworker', 'Amount', 'Created On', 'Days Old', 'Fix'],
-    row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), escPipe(i.amount), i.createdOn, i.daysOld, `\`${i.fix}\``],
+    row: (i) => [i.invoiceNumber, i.member, i.amount, i.createdOn, i.daysOld, `\`${i.fix}\``],
     fn: checkStaleDraftInvoices,
   },
   {
@@ -412,7 +445,7 @@ const CHECK_DEFS = [
     heading: 'Plans and products missing a tax rate or financial account',
     description: (n) => `${n} item(s) missing tax rate or financial account. May break accounting integrations.`,
     columns: ['Type', 'Name', 'Business', 'Missing', 'Fix'],
-    row: (i) => [i.type, escPipe(i.name), escPipe(i.business), escPipe(i.missing), `\`${i.fix}\``],
+    row: (i) => [i.type, i.name, i.business, i.missing, `\`${i.fix}\``],
     fn: checkMissingTaxOrFinancialAccount,
   },
   {
@@ -421,7 +454,7 @@ const CHECK_DEFS = [
     heading: 'Paused contracts that are past their restart date',
     description: (n) => `${n} contract pause period(s) have ended but may not have resumed.`,
     columns: ['Member', 'Tariff', 'Pause From', 'Pause Until', 'Days Past', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.tariff), i.pauseFrom, i.pauseUntil, i.daysPast, `\`${i.fix}\``],
+    row: (i) => [i.member, i.tariff, i.pauseFrom, i.pauseUntil, i.daysPast, `\`${i.fix}\``],
     fn: checkFrozenContractsPastEndDate,
   },
   {
@@ -430,7 +463,7 @@ const CHECK_DEFS = [
     heading: 'Past bookings that were never invoiced',
     description: (n) => `${n} past booking(s) older than ${BOOKING_STALE_DAYS} days have not been invoiced.`,
     columns: ['Booking #', 'Resource', 'Coworker', 'Date', 'Days Old', 'Fix'],
-    row: (i) => [i.bookingNumber, escPipe(i.resource), escPipe(i.member), i.date, i.daysOld, `\`${i.fix}\``],
+    row: (i) => [i.bookingNumber, i.resource, i.member, i.date, i.daysOld, `\`${i.fix}\``],
     fn: checkChargedUninvoicedBookings,
   },
   {
@@ -439,7 +472,7 @@ const CHECK_DEFS = [
     heading: 'Active members on paid plans with no payment method',
     description: (n) => `${n} active Member(s) on paid plans have no payment method on file.`,
     columns: ['Member', 'Email', 'Tariff', 'Price', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.email), escPipe(i.tariff), i.price, `\`${i.fix}\``],
+    row: (i) => [i.member, i.email, i.tariff, i.price, `\`${i.fix}\``],
     fn: checkMembersNoPaymentMethod,
   },
   {
@@ -448,7 +481,7 @@ const CHECK_DEFS = [
     heading: `Members getting close to the ${CONTRACT_LIMIT_MAX}-contract limit`,
     description: (n) => `${n} Member(s) have ${CONTRACT_LIMIT_WARNING}+ active contracts (limit is ${CONTRACT_LIMIT_MAX}).`,
     columns: ['Member', 'Active Contracts', 'Limit', 'Fix'],
-    row: (i) => [escPipe(i.member), i.activeContracts, i.limit, `\`${i.fix}\``],
+    row: (i) => [i.member, i.activeContracts, i.limit, `\`${i.fix}\``],
     fn: checkContractLimitApproaching,
   },
   {
@@ -457,7 +490,7 @@ const CHECK_DEFS = [
     heading: 'Products at or below their low-stock alert level',
     description: (n) => `${n} product(s) at or below their stock alert level.`,
     columns: ['Product', 'Business', 'Stock', 'Alert Level', 'Fix'],
-    row: (i) => [escPipe(i.name), escPipe(i.business), i.stock, i.alertLevel, `\`${i.fix}\``],
+    row: (i) => [i.name, i.business, i.stock, i.alertLevel, `\`${i.fix}\``],
     fn: checkProductsLowStock,
   },
   {
@@ -466,7 +499,7 @@ const CHECK_DEFS = [
     heading: 'Archived plans still used by active contracts',
     description: (n) => `${n} archived plan(s) still have active contracts.`,
     columns: ['Plan', 'Active Contracts', 'Fix'],
-    row: (i) => [escPipe(i.tariff), i.activeContracts, `\`${i.fix}\``],
+    row: (i) => [i.tariff, i.activeContracts, `\`${i.fix}\``],
     fn: checkArchivedTariffsWithActiveContracts,
   },
   {
@@ -475,7 +508,7 @@ const CHECK_DEFS = [
     heading: 'Check-ins still open after more than 24 hours',
     description: (n) => `${n} check-in(s) have no checkout time and are older than ${CHECKIN_STALE_HOURS} hours.`,
     columns: ['Coworker', 'Business', 'Checked In', 'Hours Open', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.business), i.from, i.hoursOpen, `\`${i.fix}\``],
+    row: (i) => [i.member, i.business, i.from, i.hoursOpen, `\`${i.fix}\``],
     fn: checkUnclosedCheckins,
   },
   {
@@ -484,7 +517,7 @@ const CHECK_DEFS = [
     heading: "Charges more than 30 days old that still aren't invoiced",
     description: (n) => `${n} charge(s) older than ${CHARGE_STALE_DAYS} days have not been invoiced.`,
     columns: ['Description', 'Amount', 'Coworker', 'Type', 'Business', 'Sale Date', 'Days Old', 'Fix'],
-    row: (i) => [escPipe(i.description), i.amount, escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.business), i.saleDate, i.daysOld, `\`${i.fix}\``],
+    row: (i) => [i.description, i.amount, i.member, classifyCoworkerById(i.coworkerId), i.business, i.saleDate, i.daysOld, `\`${i.fix}\``],
     fn: checkUninvoicedCharges,
   },
   {
@@ -493,7 +526,7 @@ const CHECK_DEFS = [
     heading: "Overpaid invoices — there's credit to give back",
     description: (n) => `${n} invoice(s) have been overpaid. Credit may be available for the Coworker.`,
     columns: ['Invoice #', 'Coworker', 'Type', 'Total', 'Paid', 'Overpayment', 'Fix'],
-    row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), classifyCoworkerById(i.coworkerId), escPipe(i.total), escPipe(i.paid), escPipe(i.overpayment), `\`${i.fix}\``],
+    row: (i) => [i.invoiceNumber, i.member, classifyCoworkerById(i.coworkerId), i.total, i.paid, i.overpayment, `\`${i.fix}\``],
     fn: checkOverpaidInvoices,
   },
   {
@@ -502,7 +535,7 @@ const CHECK_DEFS = [
     heading: `Admin accounts with no login in ${STALE_OPERATOR_DAYS}+ days`,
     description: (n) => `${n} active admin account(s) haven't logged in for ${STALE_OPERATOR_DAYS}+ days. Review and deactivate.`,
     columns: ['Operator', 'Email', 'Last Access', 'Days Stale', 'Fix'],
-    row: (i) => [escPipe(i.operator), escPipe(i.email), i.lastAccess, i.daysStale, `\`${i.fix}\``],
+    row: (i) => [i.operator, i.email, i.lastAccess, i.daysStale, `\`${i.fix}\``],
     fn: checkStaleOperators,
   },
   {
@@ -511,7 +544,7 @@ const CHECK_DEFS = [
     heading: 'Active help-desk departments with nobody managing them',
     description: (n) => `${n} active help-desk department(s) have no managers. Incoming tickets fall through.`,
     columns: ['Business', 'Department', 'Created On', 'Fix'],
-    row: (i) => [escPipe(i.business), escPipe(i.department), i.createdOn, `\`${i.fix}\``],
+    row: (i) => [i.business, i.department, i.createdOn, `\`${i.fix}\``],
     fn: checkHelpDeskDeptsNoManagers,
   },
   {
@@ -520,7 +553,7 @@ const CHECK_DEFS = [
     heading: `Open help-desk tickets with no owner for ${UNASSIGNED_TICKET_DAYS}+ days`,
     description: (n) => `${n} open help-desk ticket(s) have no owner and are older than ${UNASSIGNED_TICKET_DAYS} days.`,
     columns: ['Business', 'Subject', 'Coworker', 'Created On', 'Days Open', 'Fix'],
-    row: (i) => [escPipe(i.business), escPipe(i.subject), escPipe(i.coworker), i.createdOn, i.daysOpen, `\`${i.fix}\``],
+    row: (i) => [i.business, i.subject, i.coworker, i.createdOn, i.daysOpen, `\`${i.fix}\``],
     fn: checkUnassignedHelpDeskTickets,
   },
   {
@@ -529,8 +562,26 @@ const CHECK_DEFS = [
     heading: 'Plan and product credits members can never spend',
     description: (n) => `${n} booking credit(s) release to members but grant nothing or cannot be used for bookings, events, or products.`,
     columns: ['Credit', 'Type', 'Plan/Product', 'Business', 'Problem', 'Fix'],
-    row: (i) => [escPipe(i.name), i.type, escPipe(i.owner), escPipe(i.business), escPipe(i.problem), `\`${i.fix}\``],
+    row: (i) => [i.name, i.type, i.owner, i.business, i.problem, `\`${i.fix}\``],
     fn: checkCreditsSetup,
+  },
+  {
+    key: 'staleProposals', num: 35, severity: 'MEDIUM',
+    name: 'Proposals sent out and never answered',
+    heading: 'Proposals sent to customers that never got a reply',
+    description: (n) => `${n} proposal(s) are still waiting on the customer — either past their expiry date or sent over ${PROPOSAL_STALE_DAYS} days ago with no expiry set.`,
+    columns: ['Reference', 'Coworker', 'Plan', 'Value', 'Sent On', 'Days Open', 'Why', 'Fix'],
+    row: (i) => [i.reference, i.coworker, i.plan, i.value, i.sentOn, i.daysOpen, i.why, `\`${i.fix}\``],
+    fn: checkStaleProposals,
+  },
+  {
+    key: 'uncollectedDeliveries', num: 36, severity: 'MEDIUM',
+    name: 'Deliveries nobody has come to collect',
+    heading: 'Deliveries still sitting uncollected at reception',
+    description: (n) => `${n} delivery item(s) have been waiting for collection for more than ${DELIVERY_STALE_DAYS} days.`,
+    columns: ['Delivery', 'Coworker', 'Location', 'Business', 'Received', 'Days Waiting', 'Fix'],
+    row: (i) => [i.delivery, i.coworker, i.location, i.business, i.received, i.daysWaiting, `\`${i.fix}\``],
+    fn: checkUncollectedDeliveries,
   },
   // --- LOW ---
   {
@@ -539,7 +590,7 @@ const CHECK_DEFS = [
     heading: 'Invoices that were only partly paid',
     description: (n) => `${n} invoice(s) have partial payment but are not marked as paid.`,
     columns: ['Invoice #', 'Coworker', 'Total', 'Paid', 'Remaining', 'Fix'],
-    row: (i) => [escPipe(i.invoiceNumber), escPipe(i.member), escPipe(i.total), escPipe(i.paid), escPipe(i.remaining), `\`${i.fix}\``],
+    row: (i) => [i.invoiceNumber, i.member, i.total, i.paid, i.remaining, `\`${i.fix}\``],
     fn: checkPartialPayments,
   },
   {
@@ -548,7 +599,7 @@ const CHECK_DEFS = [
     heading: 'Discount codes with a start date after their end date',
     description: (n) => `${n} discount code(s) have an impossible date range (start after end).`,
     columns: ['Code', 'Description', 'Valid From', 'Valid To', 'Fix'],
-    row: (i) => [escPipe(i.code), escPipe(i.description), i.validFrom, i.validTo, `\`${i.fix}\``],
+    row: (i) => [i.code, i.description, i.validFrom, i.validTo, `\`${i.fix}\``],
     fn: checkDiscountCodesInvalidDateRange,
   },
   {
@@ -557,7 +608,7 @@ const CHECK_DEFS = [
     heading: 'Bookable resources that have no booking rate set',
     description: (n) => `${n} non-archived resource(s) have no booking rate. They may be free for everyone.`,
     columns: ['Resource', 'Business', 'Type', 'Fix'],
-    row: (i) => [escPipe(i.name), escPipe(i.business), escPipe(i.type), `\`${i.fix}\``],
+    row: (i) => [i.name, i.business, i.type, `\`${i.fix}\``],
     fn: checkResourcesNoPricing,
   },
   // --- INSIGHT ---
@@ -567,7 +618,7 @@ const CHECK_DEFS = [
     heading: 'The same email address on more than one account',
     description: (n) => `${n} email address(es) are shared by multiple Coworker accounts (Members and/or Contacts).`,
     columns: ['Email', 'Count', 'Coworkers'],
-    row: (i) => [escPipe(i.email), i.count, escPipe(i.names)],
+    row: (i) => [i.email, i.count, i.names],
     fn: checkDuplicateEmails,
   },
   {
@@ -576,7 +627,7 @@ const CHECK_DEFS = [
     heading: 'Contracts priced differently from their plan',
     description: (n) => `${n} contract(s) have a price that differs from their plan's current price (often legitimate, e.g. $0 plans where price is set per-contract).`,
     columns: ['Member', 'Tariff', 'Contract Price', 'Plan Price', 'Diff', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.tariff), i.contractPrice, i.tariffPrice, i.diff, `\`${i.fix}\``],
+    row: (i) => [i.member, i.tariff, i.contractPrice, i.tariffPrice, i.diff, `\`${i.fix}\``],
     fn: checkContractPriceOverrides,
   },
   {
@@ -585,12 +636,12 @@ const CHECK_DEFS = [
     heading: 'Possible duplicate contracts — same member, same plan',
     description: (n) => `${n} contract(s) are duplicates: same Member on the same plan more than once.`,
     columns: ['Member', 'Tariff', 'Start Date', 'Duplicates', 'Fix'],
-    row: (i) => [escPipe(i.member), escPipe(i.tariff), i.startDate, i.count, `\`${i.fix}\``],
+    row: (i) => [i.member, i.tariff, i.startDate, i.count, `\`${i.fix}\``],
     fn: checkDuplicateContracts,
   }
 
 ];
 
 module.exports = {
-  CHECK_DEFS, CHECK_TIERS, LEVEL_TO_LETTER, CHECK_DEPS, REMEDIATIONS,
+  CHECK_DEFS, CHECK_TIERS, LEVEL_TO_LETTER, CHECK_DEPS, REMEDIATIONS, TIER_TIME_ESTIMATES,
 };

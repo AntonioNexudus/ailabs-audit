@@ -5,9 +5,11 @@
 // only), loopback-only HTTP server. It never runs audit logic in-process:
 // audits are spawned as child processes (node audit.js / onboarding-audit.js)
 // with piped stdio so they emit plain, ANSI-free line output this server parses
-// into live progress. Everything here is additive — deleting the four new files
-// (this, lib/ui-page.js, lib/ui-client.js, Run Audit Dashboard.cmd) fully
-// reverts the feature. The existing audit scripts and lib/* are untouched.
+// into live progress. The dashboard is three files (this, lib/ui-page.js,
+// lib/ui-client.js) and adds no logic to the audits themselves — but it is not
+// free-standing: lib/ui-page.js renders through lib/brand.js, which is now a
+// shared dependency of the reports and the dashboard alike, so a change there
+// shows up in both.
 //
 // It reads only the *static* registries from check-defs / onboarding-check-defs
 // and the async CLI helpers (runCLIAsync / fetchAllPagesAsync) from
@@ -22,8 +24,7 @@ const { fileURLToPath } = require('url');
 
 const { resolveReportsDir } = require('./lib/config');
 const { runCLIAsync, fetchAllPagesAsync } = require('./lib/nexudus-cli');
-const { CHECK_DEFS, CHECK_TIERS } = require('./lib/check-defs');
-const { ONBOARDING_CHECK_DEFS } = require('./lib/onboarding-check-defs');
+const { CHECK_DEFS, CHECK_TIERS, TIER_TIME_ESTIMATES } = require('./lib/check-defs');
 const { renderPage } = require('./lib/ui-page');
 
 // ---------------------------------------------------------------------------
@@ -41,8 +42,8 @@ const LOG_RING = 500;
 const MAX_BODY_BYTES = 1_000_000;
 
 // Report filename contract (matches audit.js / onboarding-audit.js output):
-// <type>-audit-YYYY-MM-DD-HH-MM-SS.(html|md)
-const REPORT_NAME_RE = /^(account-audit|onboarding-audit)-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.(html|md)$/;
+// <type>-audit-YYYY-MM-DD-HH-MM-SS.html
+const REPORT_NAME_RE = /^(account-audit|onboarding-audit)-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.html$/;
 
 // Resolved once at boot: resolveReportsDir() spawns PowerShell per call to
 // follow a OneDrive-redirected Desktop, so we never want it on the hot path.
@@ -76,20 +77,15 @@ function buildMeta() {
       if (lvl) tierCounts[lvl]++;
     }
   }
+  // Deliberately narrow: only what ui-client.js actually reads. `app` is the
+  // exception — probeExisting() below fetches /api/meta on a busy port and
+  // matches this marker to tell our own dashboard from an unrelated server.
   return {
     app: APP_MARKER,
-    version: APP_VERSION,
-    port: ACTUAL_PORT,
     account: {
-      checks: CHECK_DEFS.map((d) => ({
-        num: d.num, name: d.name, severity: d.severity || 'INSIGHT', section: d.section || 'severity',
-      })),
-      tiers: CHECK_TIERS,
-      levels: ['quick', 'medium', 'thorough'],
+      checks: CHECK_DEFS.map((d) => ({ num: d.num, name: d.name, severity: d.severity || 'INSIGHT' })),
       tierCounts,
-    },
-    onboarding: {
-      checks: ONBOARDING_CHECK_DEFS.map((d) => ({ num: d.num, name: d.name, section: d.section })),
+      tierEstimates: TIER_TIME_ESTIMATES,
     },
   };
 }
@@ -186,25 +182,43 @@ function newRunId() {
   return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-// The slice of a run that is safe to send to the browser.
+// The slice of a run that is safe to send to the browser. Trimmed to exactly
+// what ui-client.js reads — the run object itself carries more (pid, raw
+// stderr, buffers, finishedAt) that the page has no use for. Adding a field
+// here is cheap; keeping an unread one is a contract nobody maintains.
 function publicRun(run) {
   if (!run) return null;
   return {
-    runId: run.runId,
     type: run.type,
     status: run.status,
     startedAt: run.startedAt,
-    finishedAt: run.finishedAt,
     total: run.total,
     done: run.done,
     checks: run.checks.filter(Boolean),
     warnings: run.warnings,
     log: run.log,
-    scopeLine: run.scopeLine,
     summary: run.summary,
     error: run.error,
   };
 }
+
+// ---------------------------------------------------------------------------
+// SSE event contract with ui-client.js (connectStream). Six events, all
+// JSON-encoded in `data:`. The browser's EventSource reconnects on its own,
+// and handleSse() replays a `snapshot` on every connect, so a client that
+// misses events mid-run resyncs without any replay/cursor machinery:
+//
+//   snapshot  publicRun() | null   on connect, and again when a run starts
+//   scope     { total, type }      the audit's scope header line was parsed
+//   check     { index, num, name, total, done, status, count? }  one check done
+//   log       { line }             one raw stdout/stderr line
+//   warning   { level, text }      one stderr line, classified
+//   done      publicRun()          run reached a terminal state
+//
+// publicRun() above defines the snapshot/done payload — change it and both
+// events change together. The per-check fields come from parseCheckLine +
+// classifySummary; anything not listed here the client will ignore.
+// ---------------------------------------------------------------------------
 
 function sseSend(res, event, data) {
   res.write('event: ' + event + '\n');
@@ -266,10 +280,12 @@ function parseCheckLine(line) {
 function handleStdoutLine(run, line) {
   pushLog(run, line);
 
-  // Scope header line, e.g. "Nexudus Account Health Audit — 2026-07-22 · …"
+  // Scope header line, e.g. "Nexudus Account Health Audit — 2026-07-22 · …".
+  // The line itself is already in the log; the client only needs the signal
+  // that the run has started reporting, so we forward the run identity, not
+  // the text.
   if (/^Nexudus .+ Audit — /.test(line)) {
-    run.scopeLine = line.trim();
-    broadcast('scope', { scopeLine: run.scopeLine, total: run.total, type: run.type });
+    broadcast('scope', { total: run.total, type: run.type });
     return;
   }
 
@@ -280,7 +296,7 @@ function handleStdoutLine(run, line) {
     const check = {
       index: parsedLine.index, num: parsedLine.num, name: parsedLine.name,
       total: parsedLine.total, done: parsedLine.index,
-      status: parsed.status, count: parsed.count, summary: parsedLine.summary,
+      status: parsed.status, count: parsed.count,
     };
     run.checks[parsedLine.index - 1] = check;
     run.total = parsedLine.total;
@@ -301,13 +317,6 @@ function handleStdoutLine(run, line) {
   const fm = line.match(/(file:\/\/\/\S+\.html)/);
   if (fm) {
     try { run.reportName = path.basename(fileURLToPath(fm[1])); } catch { /* ignore */ }
-    return;
-  }
-
-  // Markdown path line (account audit only): "  md (AI-readable): C:\…\x.md"
-  const md = line.match(/md \(AI-readable\):\s*(.+\.md)\s*$/);
-  if (md) {
-    run.mdName = path.basename(md[1].trim());
     return;
   }
 }
@@ -404,7 +413,6 @@ function finishRun(run, outcome) {
       totalIssues: run.totalIssues,
       reportName: run.reportName,
       reportUrl: run.reportName ? '/report/' + encodeURIComponent(run.reportName) : null,
-      mdName: run.mdName,
     };
   } else {
     run.status = 'error';
@@ -428,7 +436,6 @@ function startRun(opts) {
     checks: [],
     warnings: [],
     log: [],
-    scopeLine: null,
     summary: null,
     error: null,
     pid: null,
@@ -437,7 +444,6 @@ function startRun(opts) {
     summaryText: null,
     totalIssues: null,
     reportName: null,
-    mdName: null,
     stdoutBuf: { value: '' },
     stderrBuf: { value: '' },
   };
@@ -503,28 +509,19 @@ function cancelRun() {
 // Reports listing + safe serving
 // ---------------------------------------------------------------------------
 
-// Pure: fold a flat directory listing into newest-first report entries, folding
-// each .md into a `hasMd` flag on its .html sibling. Lone .md files (no .html)
-// are dropped — the .html is the deliverable. No fs access, so it's testable.
+// Pure: map a flat directory listing to newest-first report entries. The .html
+// is the only deliverable, so anything that doesn't match the report filename
+// shape is ignored, which also keeps unrelated files an operator may have
+// dropped in the reports folder out of the list. No fs access, so it's testable.
 function parseReportEntries(files) {
-  const byBase = new Map();
-  for (const f of files) {
-    if (!REPORT_NAME_RE.test(f)) continue;
-    const base = f.replace(/\.(html|md)$/, '');
-    if (!byBase.has(base)) byBase.set(base, { html: null, md: null });
-    if (f.endsWith('.html')) byBase.get(base).html = f;
-    else byBase.get(base).md = f;
-  }
   const out = [];
-  for (const rec of byBase.values()) {
-    if (!rec.html) continue;
-    const name = rec.html;
+  for (const name of files) {
     const m = REPORT_NAME_RE.exec(name);
+    if (!m) continue;
     out.push({
       name,
       type: m[1] === 'onboarding-audit' ? 'onboarding' : 'account',
       stamp: name.slice(m[1].length + 1).replace(/\.html$/, ''),
-      hasMd: !!rec.md,
     });
   }
   out.sort((a, b) => b.stamp.localeCompare(a.stamp));
@@ -562,9 +559,7 @@ function serveReport(res, rawName) {
   if (full !== path.join(dir, name) || !full.startsWith(dir + path.sep)) return sendText(res, 400, 'Bad request');
   fs.stat(full, (err, st) => {
     if (err || !st.isFile()) return sendText(res, 404, 'Not found');
-    // .md served as text/plain (not text/markdown, which some browsers download).
-    const type = name.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
-    res.writeHead(200, { 'Content-Type': type });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     const stream = fs.createReadStream(full);
     stream.on('error', () => { try { res.end(); } catch { /* noop */ } });
     stream.pipe(res);
@@ -853,7 +848,10 @@ function main() {
 }
 
 // Only boot the server when run directly (node scripts/ui.js). When required as
-// a module (unit tests), just expose the pure, spawn-free helpers.
+// a module, just expose the pure, spawn-free helpers below — there is no test
+// suite in the repo; tests are generated on demand by the QA workflow and run
+// against these exports, so requiring this file must never start a server or
+// touch the CLI.
 if (require.main === module) {
   main();
 }

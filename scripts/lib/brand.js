@@ -321,12 +321,6 @@ details.section[open] > summary .section-chevron { transform: rotate(90deg); }
   color: ${C.text_body};
 }
 .summary-table tr:last-child td { border-bottom: none; }
-.summary-table .sname {
-  font-family: ${FONT_DISPLAY};
-  font-weight: 600;
-  color: ${C.navy};
-}
-.summary-table .pill-group { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ── Footer ── */
 footer {

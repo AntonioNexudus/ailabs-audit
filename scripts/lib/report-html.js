@@ -105,7 +105,7 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
     const head = cols.map((c) => `<th>${escHtml(c)}</th>`).join('');
     const rows = items.map((item) => {
       const cells = def.row(item).slice(0, colCount).map((c) =>
-        // Strip backticks (markdown code markers from def.row); HTML-escape rest.
+        // Strip the backticks def.row wraps fix commands in; HTML-escape rest.
         escHtml(String(c == null ? '' : c).replace(/`/g, ''))
       );
       return `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
@@ -132,7 +132,12 @@ function buildHtmlReport(results, ranDefs, scopeMeta) {
   };
 
   // ---------- exec-summary table ----------
-  const summaryRows = defsForReport.map((def) => {
+  // Ordered by check number, not registry order. CHECK_DEFS is grouped by
+  // severity, so a check added to an earlier severity block after later blocks
+  // already existed (e.g. #35/#36 in MEDIUM, after LOW's #29-31) would otherwise
+  // make the summary read "…28, 35, 36, 29, 30…" — which looks like a bug in a
+  // client-facing report. The finding cards below stay severity-grouped.
+  const summaryRows = [...defsForReport].sort((a, b) => a.num - b.num).map((def) => {
     const r = results[def.key];
     const count = !r ? '—' : r.status === 'ERROR' ? 'Error' : r.items.length;
     const sev = def.section === 'insights' ? 'INSIGHT' : def.severity;

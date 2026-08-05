@@ -4,7 +4,7 @@
 //  - interactive (both stdout AND stderr are TTYs): chatter is dropped, a
 //    single self-redrawing progress line lives on stderr, and warnings/errors
 //    are printed without corrupting that line (clear -> print -> redraw).
-//  - plain (piped / redirected / AI-driven skill flow): today's sequential
+//  - plain (piped / redirected, e.g. a dashboard-spawned run): sequential
 //    logging — every message printed in order, no ANSI escapes, no `\r`.
 //
 // Before init() is called the router defaults to plain mode, so modules that

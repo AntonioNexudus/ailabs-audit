@@ -7,9 +7,9 @@ const fs = require('fs');
 // We rely entirely on the CLI's automatic tokenization and never generate
 // tokens ourselves. In a normal (locked) run the CLI returns `«PII:…»` tokens
 // and keeps the token-to-value map in its own local store (~/.nexudus/
-// pii-tokens.json). The .md keeps the tokens (AI-safe); the .html, which only
-// the operator sees, reverses them using that same store. Tokens without a
-// mapping are left as-is.
+// pii-tokens.json). The .html, which only the operator sees, reverses those
+// tokens back to real values using that same store. Tokens without a mapping
+// are left as-is.
 // ---------------------------------------------------------------------------
 
 const PII_TOKEN_RE = /«PII:[A-Z_]+:[0-9a-fA-F]+»/g;

@@ -3,10 +3,9 @@
 // Entry point for the Nexudus Onboarding Check-in Audit. Same interactive
 // flow as scripts/audit.js (Business-ID prompt -> run -> progress line ->
 // report link) but simpler: no depth tiers (every check always runs, this
-// audit is small), pass/warn/fail/skip semantics instead of issue counts, and
-// only an HTML report is written (no .md — there's no AI fix flow for this
-// audit, the HTML is the whole deliverable). Reuses the same lib/* modules
-// scripts/audit.js does; this file owns only the wiring.
+// audit is small) and pass/warn/fail/skip semantics instead of issue counts.
+// Reuses the same lib/* modules scripts/audit.js does; this file owns only
+// the wiring.
 
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +13,7 @@ const state = require('./lib/state');
 const log = require('./lib/log');
 const {
   TODAY_STR, TIMESTAMP, MAX_CONCURRENT_CLI_CLEAR, MAX_CONCURRENT_CLI_REDACTED,
-  resolveReportsDir,
+  resolveReportsDir, resolveReportPath,
 } = require('./lib/config');
 const {
   runCLI, acquireLock, computeOperatorCacheKey, configureCache,
@@ -61,8 +60,8 @@ function parseArgs(argv) {
 }
 
 // Same validation gate as audit.js: throws on the first unknown ID without
-// echoing the operator's real business list, so AI-driven invocations don't
-// leak it into the conversation.
+// echoing the operator's real business list, so the list can't leak through
+// logs or a piped stderr.
 function validateBusinessIds(str, accessible) {
   if (!accessible || accessible.size === 0) {
     throw new Error('No businesses are accessible to this account. Run `nexudus login` or contact your Nexudus administrator.');
@@ -265,6 +264,13 @@ async function main() {
   for (let i = 0; i < ONBOARDING_CHECK_DEFS.length; i++) {
     const def = ONBOARDING_CHECK_DEFS[i];
     log.progress.update(`[${i + 1}/${ONBOARDING_CHECK_DEFS.length}] #${def.num} ${def.name}`);
+    // Compatibility contract, not just formatting: the dashboard spawns this
+    // script with piped stdio and regex-parses this exact shape —
+    //   "  [i/N] #num name — summary"
+    // — in ui.js's parseCheckLine() to drive its live progress. Two leading
+    // spaces, square-bracketed i/N, '#' before the number, and a spaced em
+    // dash before the summary. Change the shape here and the dashboard's
+    // per-check pills and progress bar silently stop moving.
     const prefix = `  [${i + 1}/${ONBOARDING_CHECK_DEFS.length}] #${def.num} ${def.name}`;
     let summary;
     try {
@@ -276,6 +282,9 @@ async function main() {
       summary = `ERROR: ${err.message}`;
       log.warn(`${prefix} — ${summary}`);
     }
+    // The line ui.js's parseCheckLine() reads — see the prefix comment above.
+    // The " — " separator is what it splits name from summary on, and the
+    // uppercased status is what classifySummary() maps to a pill colour.
     log.info(`${prefix} — ${summary}`);
   }
 
@@ -330,13 +339,13 @@ async function main() {
 
   const htmlReport = buildOnboardingReport(sections, scopeMeta);
 
-  const reportsDir = opts.output
-    ? path.dirname(path.resolve(opts.output))
-    : resolveReportsDir();
-  fs.mkdirSync(reportsDir, { recursive: true });
-  const htmlPath = opts.output
-    ? (path.extname(opts.output) ? path.resolve(opts.output) : path.resolve(opts.output) + '.html')
-    : path.join(reportsDir, `onboarding-audit-${TIMESTAMP}.html`);
+  // Same --output semantics as audit.js (see resolveReportPath in lib/config).
+  const htmlPath = resolveReportPath(
+    opts.output,
+    opts.output ? null : resolveReportsDir(),
+    `onboarding-audit-${TIMESTAMP}.html`,
+  );
+  fs.mkdirSync(path.dirname(htmlPath), { recursive: true });
   fs.writeFileSync(htmlPath, htmlReport, 'utf8');
 
   // Final summary block.

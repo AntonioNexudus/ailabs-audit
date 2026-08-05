@@ -32,6 +32,13 @@ function parseIds(str) {
   return str.split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// Age helpers. Both mix two clocks on purpose: `dateStr` is an ISO string from
+// the API, which `new Date()` parses as UTC, while `ref` is normally TODAY — a
+// local-midnight Date. So the result can be off by up to a day either way
+// depending on the operator's offset. That is fine here: every caller compares
+// against a staleness threshold measured in days or hours (7 days, 30 days, 24
+// hours), where a one-unit boundary wobble changes nothing an operator would
+// act on differently. Don't reuse these where an exact age matters.
 function daysBetween(dateStr, ref) {
   return Math.floor((ref - new Date(dateStr)) / 86_400_000);
 }
@@ -40,7 +47,9 @@ function hoursBetween(dateStr, ref) {
   return Math.floor((ref - new Date(dateStr)) / 3_600_000);
 }
 
-// Escapes pipe characters for markdown table cells
+// Escapes pipe characters (and coerces null/undefined to '') so a value can be
+// embedded in the onboarding report's " | "-delimited detail strings without a
+// stray '|' being misread as a column boundary when they're split back apart.
 function escPipe(str) {
   if (!str) return '';
   return String(str).replace(/\|/g, '\\|');

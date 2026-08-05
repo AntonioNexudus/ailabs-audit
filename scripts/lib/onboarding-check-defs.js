@@ -44,6 +44,13 @@ const checkCustomFieldsUnusedRequired = require('./onboarding-checks/customField
 const checkResourcesNoBookingPolicy = require('./onboarding-checks/resourcesNoBookingPolicy');
 const checkResourcesBookingPolicyIncomplete = require('./onboarding-checks/resourcesBookingPolicyIncomplete');
 
+// Checks #31-32 — appended at the end of the array for the same
+// grouping-by-Map reason as #23-30 above: onboarding-report.js groups by
+// `section`, so a check appended here still renders under its own section
+// heading rather than at the bottom of the report.
+const checkPortalContentReadiness = require('./onboarding-checks/portalContentReadiness');
+const checkFloorPlanDesks = require('./onboarding-checks/floorPlanDesks');
+
 const SECTIONS = {
   PLANS: 'Plans & pricing',
   RESOURCES: 'Resources & rates',
@@ -54,6 +61,22 @@ const SECTIONS = {
   INTEGRATIONS: 'Integrations & setup',
 };
 
+// Check-author contract. Every `fn` returns { status, detail, hint? }:
+//   status  'pass' | 'warn' | 'fail' | 'skip' (lowercase; anything else is
+//           coerced to 'skip' by onboarding-report.js)
+//   detail  the body text, in a small line-oriented DSL that
+//           onboarding-report.js:detailHtml() decodes by shape —
+//             one line               -> a plain paragraph
+//             lines containing " | " -> a table, first line = header row
+//             "Label: value" lines   -> a 2-column field table ('—' as the
+//                                       value renders as a "missing" cell)
+//           Build the table/field shapes with _helpers.js's table()/fields()
+//           rather than by hand: they escape a literal '|' in live data that
+//           would otherwise be read as a column boundary.
+//   hint    optional one-line remediation; rendered only for warn/fail.
+// Returning nothing, or an object with no status, is treated as a skip. A
+// thrown error is caught per check and reported as a fail, so a check may
+// throw instead of inventing a result when its data is unusable.
 const ONBOARDING_CHECK_DEFS = [
   { num: 1, key: 'plansPublished', name: 'Membership plans published & visible', section: SECTIONS.PLANS, fn: checkPlansPublished },
   { num: 2, key: 'plansPricingDescriptions', name: 'Plan pricing & descriptions complete', section: SECTIONS.PLANS, fn: checkPlansPricingDescriptions },
@@ -92,6 +115,9 @@ const ONBOARDING_CHECK_DEFS = [
 
   { num: 29, key: 'resourcesNoBookingPolicy', name: 'Bookable resources with no booking policy', section: SECTIONS.RESOURCES, fn: checkResourcesNoBookingPolicy },
   { num: 30, key: 'resourcesBookingPolicyIncomplete', name: 'Booking policies missing key limits', section: SECTIONS.RESOURCES, fn: checkResourcesBookingPolicyIncomplete },
+
+  { num: 31, key: 'portalContentReadiness', name: 'Member portal has something on it', section: SECTIONS.MEMBER_EXPERIENCE, fn: checkPortalContentReadiness },
+  { num: 32, key: 'floorPlanDesks', name: 'Floor plan drawn and desks mapped', section: SECTIONS.LOCATION, fn: checkFloorPlanDesks },
 ];
 
-module.exports = { ONBOARDING_CHECK_DEFS, SECTIONS };
+module.exports = { ONBOARDING_CHECK_DEFS };

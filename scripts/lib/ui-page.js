@@ -7,6 +7,13 @@
 // same product as the branded reports) followed by ~dashboard-only rules that
 // interpolate the same C.* palette. Everything is self-contained except the
 // Google Fonts <link>, exactly as the report builders do it.
+//
+// The element IDs in the skeleton below are a hard contract with ui-client.js:
+// it finds every container by $('#...') and assumes the node exists (no null
+// guards). Renaming or dropping an id here breaks the dashboard silently — the
+// page still renders, but whichever region the client was about to fill stays
+// empty and a TypeError lands in the console. Grep the id in ui-client.js
+// before touching one.
 
 const { C, FONT_DISPLAY, FONT_BODY, GOOGLE_FONTS_URL, baseCss, logoDataUri } = require('./brand');
 
@@ -41,7 +48,6 @@ function dashboardCss() {
   color: ${C.grey_medium};
   margin-bottom: 16px;
 }
-.muted { color: ${C.grey_medium}; }
 .hidden { display: none !important; }
 
 /* ── Buttons ── */
@@ -469,4 +475,4 @@ ${dashboardCss()}
 </html>`;
 }
 
-module.exports = { renderPage, dashboardCss };
+module.exports = { renderPage };

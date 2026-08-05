@@ -87,9 +87,9 @@ function runCLI(args) {
 // accessible business IDs so switching accounts doesn't read stale data.
 // ---------------------------------------------------------------------------
 
-// Two levels up because this file lives in scripts/lib/; resolves to
-// skills/nexudus-audit/.audit-cache (the same location the cache used before
-// the split). Dropping one '..' would silently redirect it to scripts/lib/.
+// Two levels up because this file lives in scripts/lib/; resolves to the
+// repo-root .audit-cache/ (the same location the cache has always used).
+// Dropping one '..' would silently redirect it to scripts/lib/.
 const CACHE_DIR_BASE = path.join(__dirname, '..', '..', '.audit-cache');
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const LOCK_FILE = path.join(CACHE_DIR_BASE, 'audit.lock');
@@ -170,6 +170,19 @@ function computeOperatorCacheKey(accessible) {
   return crypto.createHash('sha256').update(sorted).digest('hex').slice(0, 8);
 }
 
+// Cache-key composition. Four things decide which file an entity's rows land
+// in, and together they guarantee no two contexts ever share one:
+//   1. the operator hash directory (computeOperatorCacheKey — sha256 of the
+//      accessible business IDs), so a different login reads a different tree;
+//   2. the entity key (contracts, invoices, …);
+//   3. a "__b-<sorted ids>" suffix when the run is business-scoped, so a
+//      scoped run never reads an account-wide file or vice versa;
+//   4. a "__clear" suffix when pii-mode is unlocked, because clear and
+//      tokenized rows are genuinely different data.
+// (2)-(4) are assembled by scopedPlan() below; this function prepends (1) and
+// the .json extension. Entries expire on mtime after CACHE_TTL_MS (1h), so a
+// stale file is ignored rather than deleted. Net effect: one filename per
+// (operator, entity, scope, PII state) and no cross-context bleed.
 function cacheFilePath(entityKey) {
   // main() sets OPERATOR_CACHE_KEY before any cache use; readDiskCache and
   // writeDiskCache early-return while it is still null.
@@ -232,6 +245,15 @@ function acquireCliSlot() {
   return new Promise((resolve) => _cliWaiters.push(resolve));
 }
 function releaseCliSlot() {
+  // Hand-off, not release-then-reacquire: when a waiter is queued we resolve it
+  // and deliberately leave _cliActive alone, because the slot never actually
+  // goes idle — it passes straight from the finishing call to the next one.
+  // Decrementing here and re-incrementing in acquireCliSlot would be equivalent
+  // only if the waiter ran synchronously; it doesn't (it resumes on a later
+  // microtask), so in between _cliActive would read one below the true number
+  // of live calls and a third caller could slip through the gate. With a
+  // redacted limit of 1 that extra parallel call is exactly what crashes the
+  // CLI. Only the no-waiter branch actually frees the slot.
   const next = _cliWaiters.shift();
   if (next) next();          // hand the in-use slot straight to the next waiter
   else _cliActive--;         // no waiters; free the slot
@@ -434,6 +456,6 @@ function configureCache(enabled, operatorKey) {
 module.exports = {
   runCLI, runCLIAsync,
   fetchAllPages, fetchAllPagesAsync, fetchAllPagesCached, fetchAllPagesCachedAsync,
-  acquireLock, releaseLock, computeOperatorCacheKey,
+  acquireLock, computeOperatorCacheKey,
   setConcurrencyLimit, configureCache, CACHE_DIR_BASE,
 };

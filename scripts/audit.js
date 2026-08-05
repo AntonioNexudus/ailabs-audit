@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // Entry point for the Nexudus account-health audit. Parses CLI flags, drives the
-// interactive prompts, orchestrates prefetch + checks, and writes the .md and
-// .html reports. The audit logic lives in ./lib/*; this file wires it together.
+// interactive prompts, orchestrates prefetch + checks, and writes the branded
+// HTML report. The audit logic lives in ./lib/*; this file wires it together.
 
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +10,7 @@ const state = require('./lib/state');
 const log = require('./lib/log');
 const {
   TODAY_STR, TIMESTAMP, MAX_CONCURRENT_CLI_CLEAR, MAX_CONCURRENT_CLI_REDACTED,
-  resolveReportsDir,
+  resolveReportsDir, resolveReportPath,
 } = require('./lib/config');
 const { classifyError } = require('./lib/util');
 const {
@@ -21,9 +21,8 @@ const {
   fetchAccessibleBusinessIds, prefetchAll, getBusinesses, computeCoworkerStats,
 } = require('./lib/data');
 const {
-  CHECK_DEFS, CHECK_TIERS, CHECK_DEPS, LEVEL_TO_LETTER,
+  CHECK_DEFS, CHECK_TIERS, CHECK_DEPS, LEVEL_TO_LETTER, TIER_TIME_ESTIMATES,
 } = require('./lib/check-defs');
-const { buildReport } = require('./lib/report-markdown');
 const { buildHtmlReport } = require('./lib/report-html');
 const { loadCliTokenMap, detokenizeResults } = require('./lib/detokenize');
 
@@ -79,7 +78,7 @@ function parseArgs(argv) {
 // Validates a raw --business-ids value against the IDs the logged-in operator
 // can actually see. Returns a Set<string> for filtering, or null for "all".
 // Throws on the first unknown ID without echoing the operator's real business
-// list, so AI-driven invocations don't leak it into the conversation.
+// list, so the list can't leak through logs or a piped stderr.
 function validateBusinessIds(str, accessible) {
   if (!accessible || accessible.size === 0) {
     throw new Error('No businesses are accessible to this account. Run `nexudus login` or contact your Nexudus administrator.');
@@ -139,7 +138,12 @@ function selectChecks(level, customNums) {
   return CHECK_DEFS.filter(d => tiersForCheck(d.num).includes(letter));
 }
 
-function buildChecksTable() {
+// Renders the tier-tagged checklist + depth menu shown before the interactive
+// choice prompt. `fetchClear` selects which run-time estimate column to print:
+// true/false = the operator's actual PII state (probed by then), null = we
+// don't know yet, so print both as "locked / unlocked" rather than quote a
+// number that could be 20x off. The box table auto-sizes to the wider column.
+function buildChecksTable(fetchClear) {
   const lines = [];
   const counts = { Q: 0, M: 0, T: 0 };
   for (const tiers of Object.values(CHECK_TIERS)) {
@@ -180,12 +184,18 @@ function buildChecksTable() {
   lines.push('Audit depth options');
   lines.push('');
 
+  const timeFor = (level) => {
+    const e = TIER_TIME_ESTIMATES[level];
+    if (fetchClear === null || fetchClear === undefined) return `${e.locked} / ${e.unlocked}`;
+    return fetchClear ? e.unlocked : e.locked;
+  };
+  const timeHeader = (fetchClear === null || fetchClear === undefined) ? 'Time (locked / unlocked)' : 'Time';
   const depthRows = [
-    ['Q', 'Quick', '~10s', String(counts.Q).padStart(2), 'light data only (products, tariffs, discount codes, resources, paused contracts)'],
-    ['M', 'Medium', '~45s', String(counts.M).padStart(2), 'adds Coworkers + contracts'],
-    ['T', 'Thorough', '~90s', String(counts.T).padStart(2), 'adds invoices, bookings, charges, checkins'],
+    ['Q', 'Quick', timeFor('quick'), String(counts.Q).padStart(2), 'light data only (products, tariffs, discount codes, resources, paused contracts)'],
+    ['M', 'Medium', timeFor('medium'), String(counts.M).padStart(2), 'adds Coworkers + contracts'],
+    ['T', 'Thorough', timeFor('thorough'), String(counts.T).padStart(2), 'adds invoices, bookings, charges, checkins'],
   ];
-  lines.push(...renderBoxTable(['', 'Tier', 'Time', 'Checks', 'Scope'], depthRows));
+  lines.push(...renderBoxTable(['', 'Tier', timeHeader, 'Checks', 'Scope'], depthRows));
   lines.push('');
   lines.push('How to choose');
   lines.push('');
@@ -258,7 +268,10 @@ async function runInteractivePrompts(opts, accessibleBusinessIds) {
   }
   if (!opts.level && !opts.checks) {
     console.log('');
-    console.log(buildChecksTable());
+    // detectPiiMode() has already run in main(), so state.fetchClear is known
+    // here — the table quotes the one column that matches this run. No extra
+    // probe, no added prompt latency.
+    console.log(buildChecksTable(state.fetchClear));
     console.log('');
     const ans = await promptStdin('Choice — type "q", "m", "t", or "c <numbers>" (e.g. "c 2,4,9,20"): ');
     const parsed = parseChoice(ans);
@@ -289,7 +302,7 @@ function fmtChecksScope(level, checks, totalAvailable) {
 
 // Probe the CLI's PII state once. The envelope's piiRedaction flag is "off"
 // only when the operator has unlocked pii-mode in their session, in which case
-// fetches return clear data and the .md gets a loud warning at write time.
+// fetches return clear data (nothing tokenized) and we warn at write time.
 function detectPiiMode() {
   try {
     const r = runCLI(['businesses', 'list', '--page-size', '1']);
@@ -305,15 +318,18 @@ async function main() {
 
   // Pick the output mode once: interactive (single redrawing progress line,
   // chatter suppressed) only when both stdout and stderr are real TTYs; any
-  // piped/redirected stream (incl. the AI-driven skill flow) gets plain
+  // piped/redirected stream (e.g. a dashboard-spawned run) gets plain
   // sequential logging with no ANSI escapes.
   log.init({ interactive: !!(process.stdout.isTTY && process.stderr.isTTY) });
 
   // Print the tier-tagged checklist and exit. The table is built from static
-  // data, so skip the lock, auth check and PII probe entirely. The AI-driven
-  // flow calls this to render the same selection table shown in standalone.
+  // data, so skip the lock, auth check and PII probe entirely — which means
+  // state.fetchClear is still unknown here, hence buildChecksTable(null): show
+  // both time columns rather than probe (this path must keep working logged
+  // out). The dashboard does not call this; it builds its own cards from
+  // /api/meta.
   if (opts.showChecks) {
-    console.log(buildChecksTable());
+    console.log(buildChecksTable(null));
     return;
   }
 
@@ -349,10 +365,10 @@ async function main() {
     return;
   }
 
-  // Detect whether the CLI returns clear PII (operator unlocked pii-mode). The
-  // audit relies on the CLI's automatic tokenization (locked mode) to keep the
-  // .md PII-free, so a clear/unlocked fetch is a caveat we warn about at write
-  // time. Detected before any fetch so the disk-cache key reflects it.
+  // Detect whether the CLI returns clear PII (operator unlocked pii-mode). In a
+  // locked run the CLI tokenizes everything it hands back; an unlocked run
+  // returns clear data instead, which is a caveat we warn about at write time.
+  // Detected before any fetch so the disk-cache key reflects it.
   detectPiiMode();
 
   // Redacted fetches must stay sequential (parallel redaction crashes the
@@ -469,6 +485,13 @@ async function main() {
     // moment the line can move. Plain mode: no progress line; the per-check
     // result line below is the (unchanged) progress signal.
     log.progress.update(`[${i + 1}/${selectedDefs.length}] #${def.num} ${def.name}`);
+    // Compatibility contract, not just formatting: the dashboard spawns this
+    // script with piped stdio and regex-parses this exact shape —
+    //   "  [i/N] #num name — summary"
+    // — in ui.js's parseCheckLine() to drive its live progress. Two leading
+    // spaces, square-bracketed i/N, '#' before the number, and a spaced em
+    // dash before the summary. Change the shape here and the dashboard's
+    // per-check pills and progress bar silently stop moving.
     const prefix = `  [${i + 1}/${selectedDefs.length}] #${def.num} ${def.name}`;
     let summary;
     let errored = false;
@@ -488,25 +511,23 @@ async function main() {
       log.warn(`${prefix} — ${summary}`);
     }
     // Plain mode keeps the exact per-check output line; dropped in interactive.
+    // This is the line ui.js's parseCheckLine() reads — see the prefix comment
+    // above. The " — " separator is what it splits name from summary on.
     log.info(`${prefix} — ${summary}`);
   }
 
   log.info('');
-  log.progress.update('Writing reports…');
+  log.progress.update('Writing report…');
 
-  // Determine output paths. Without --output, reports go to the Desktop
-  // "Nexudus Audit Reports" folder (resolveReportsDir creates it).
-  const reportsDir = opts.output
-    ? path.dirname(path.resolve(opts.output))
-    : resolveReportsDir();
-  fs.mkdirSync(reportsDir, { recursive: true });
-
-  const mdPath = opts.output
-    ? path.resolve(opts.output)
-    : path.join(reportsDir, `account-audit-${TIMESTAMP}.md`);
-  const mdExt = path.extname(mdPath);
-  const basePath = mdExt ? mdPath.slice(0, -mdExt.length) : mdPath;
-  const htmlPath = basePath + '.html';
+  // Without --output, the report goes to the Desktop "Nexudus Audit Reports"
+  // folder (resolveReportsDir creates it). resolveReportPath handles --output's
+  // file/directory/extension cases; its parent directory is created either way.
+  const htmlPath = resolveReportPath(
+    opts.output,
+    opts.output ? null : resolveReportsDir(),
+    `account-audit-${TIMESTAMP}.html`,
+  );
+  fs.mkdirSync(path.dirname(htmlPath), { recursive: true });
 
   // Count total issues (severity checks only; insights are informational)
   let totalIssues = 0;
@@ -532,8 +553,7 @@ async function main() {
     // Non-fatal: names will be empty and the report shows just the IDs.
   }
 
-  // Write reports: .md for AI-assisted fixes, .html as the Nexudus-branded
-  // operator deliverable.
+  // Scope metadata for the Nexudus-branded HTML operator deliverable.
   const scopeMeta = {
     businesses: state.selectedBusinessIds ? Array.from(state.selectedBusinessIds) : null,
     businessNames,
@@ -541,15 +561,13 @@ async function main() {
     checksRun: ranDefs.map(d => d.num),
     coworkerStats: computeCoworkerStats(),
   };
-  // The .md keeps whatever the CLI returned. In a locked run that's tokens
-  // (AI-safe); if the operator unlocked pii-mode the fetch came back clear and
-  // the .md will contain real PII, so warn loudly. We never tokenize data
-  // ourselves.
+  // We never tokenize data ourselves — a locked run relies on the CLI doing it.
+  // Unlocked, the fetch comes back clear, so nothing was tokenized anywhere
+  // (including any cached copies); worth flagging even though the operator's
+  // report shows real values either way.
   if (state.fetchClear) {
-    log.warn('Warning: pii-mode is UNLOCKED — the .md will contain REAL PII (the CLI did not tokenize it). Run with pii-mode locked for a redacted .md.');
+    log.warn('Warning: pii-mode is UNLOCKED — the CLI returned clear data instead of PII tokens, so REAL PII flowed through this run untokenized.');
   }
-  const report = buildReport(results, ranDefs, scopeMeta);
-  fs.writeFileSync(mdPath, report, 'utf8');
 
   // The .html is the operator-only deliverable: reverse the CLI's tokens back
   // to real values using the CLI's own local token store. No-op when the data
@@ -562,8 +580,8 @@ async function main() {
     log.warn('Note: local PII token map (~/.nexudus/pii-tokens.json) not found — the .html will show tokens, not real values.');
   }
 
-  // Final summary block; the user sees this before deciding to share the .md
-  // with AI. Progress line is retired first so the block lands on clean rows.
+  // Final summary block. The progress line is retired first so the block lands
+  // on clean rows.
   log.progress.done();
   const elapsedSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
   const { pathToFileURL } = require('url');
@@ -579,8 +597,6 @@ async function main() {
   log.out('');
   log.out('  Report (Ctrl+Click to open · Ctrl+P to save as PDF):');
   log.out(`    ${bold(pathToFileURL(htmlPath).href)}`);
-  log.out('');
-  log.out(`  md (AI-readable): ${mdPath}`);
   log.out(rule);
 }
 
